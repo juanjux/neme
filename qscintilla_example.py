@@ -7,6 +7,7 @@
 # This code is in the public domain
 #-------------------------------------------------------------------------
 import sys
+from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.Qsci import QsciScintilla, QsciLexerPython
@@ -19,25 +20,25 @@ class SimplePythonEditor(QsciScintilla):
         super(SimplePythonEditor, self).__init__(parent)
 
         # Set the default font
-        font = QFont()
-        font.setFamily('Courier')
-        font.setFixedPitch(True)
-        font.setPointSize(10)
-        self.setFont(font)
-        self.setMarginsFont(font)
+        #font = QFont()
+        #font.setFamily('Courier')
+        #font.setFixedPitch(True)
+        #font.setPointSize(10)
+        #self.setFont(font)
+        #self.setMarginsFont(font)
 
         # Margin 0 is used for line numbers
-        fontmetrics = QFontMetrics(font)
-        self.setMarginsFont(font)
-        self.setMarginWidth(0, fontmetrics.width("00000") + 6)
+        #fontmetrics = QFontMetrics(font)
+        #self.setMarginsFont(font)
+        #self.setMarginWidth(0, fontmetrics.width("00000") + 6)
         self.setMarginLineNumbers(0, True)
         self.setMarginsBackgroundColor(QColor("#cccccc"))
 
         # Clickable margin 1 for showing markers
         self.setMarginSensitivity(1, True)
-        self.connect(self,
-            SIGNAL('marginClicked(int, int, Qt::KeyboardModifiers)'),
-            self.on_margin_clicked)
+        #self.connect(self,
+            #SIGNAL('marginClicked(int, int, Qt::KeyboardModifiers)'),
+            #self.on_margin_clicked)
         self.markerDefine(QsciScintilla.RightArrow,
             self.ARROW_MARKER_NUM)
         self.setMarkerBackgroundColor(QColor("#ee1111"),
@@ -57,9 +58,9 @@ class SimplePythonEditor(QsciScintilla):
         # courier.
         #
         lexer = QsciLexerPython()
-        lexer.setDefaultFont(font)
+        #lexer.setDefaultFont(font)
         self.setLexer(lexer)
-        self.SendScintilla(QsciScintilla.SCI_STYLESETFONT, 1, 'Courier')
+        #self.SendScintilla(QsciScintilla.SCI_STYLESETFONT, 1, 'Courier')
 
         # Don't want to see the horizontal scrollbar at all
         # Use raw message to Scintilla here (all messages are documented
