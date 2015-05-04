@@ -1,16 +1,70 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 
-"""
-Neme: a NEw Modal Editor prototype
-
-author: Juanjo Álvarez
-"""
-
 import sys, os
-from PyQt5.QtWidgets import QMainWindow, QTextEdit, QAction, QApplication
-from PyQt5.QtGui import QIcon
-from PyQt5.Qsci import QsciScintilla
+# XXX remove these *'s
+from PyQt5.QtWidgets import *
+from PyQt5.QtGui import *
+from PyQt5.Qsci import QsciScintilla, QsciLexerPython
+
+
+class MyScintilla(QsciScintilla):
+    ARROW_MARKER_NUM = 0
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        # font
+        font = QFont()
+        font.setFamily('Courier')
+        font.setFixedPitch(True)
+        font.setPointSize(10)
+        self.setFont(font)
+        fontmetrics = QFontMetrics(font)
+
+        # margins
+        self.setMarginsFont(font)
+        self.setMarginWidth(0, fontmetrics.width("0000") + 3)
+        self.setMarginLineNumbers(0, True)
+        self.setMarginsBackgroundColor(QColor("#cccccc"))
+        self.setMarginSensitivity(1, True)
+        self.marginClicked.connect(self.on_margin_clicked)
+        self.markerDefine(QsciScintilla.RightArrow, self.ARROW_MARKER_NUM)
+        self.setMarkerBackgroundColor(QColor("#ee1111"), self.ARROW_MARKER_NUM)
+
+
+        # Brace matching: enable for a brace immediately before or after
+        # the current position
+        #
+        self.setBraceMatching(QsciScintilla.SloppyBraceMatch)
+
+        # Current line visible with special background color
+        self.setCaretLineVisible(True)
+        self.setCaretLineBackgroundColor(QColor("#ffe4e4"))
+
+        # Don't want to see the horizontal scrollbar at all
+        # Use raw message to Scintilla here (all messages are documented
+        # here: http://www.scintilla.org/ScintillaDoc.html)
+        self.SendScintilla(QsciScintilla.SCI_SETHSCROLLBAR, 0)
+
+        # Set Python lexer
+        # Set style for Python comments (style number 1) to a fixed-width
+        # courier.
+        #
+        lexer = QsciLexerPython()
+        lexer.setDefaultFont(font)
+        self.setLexer(lexer)
+
+        #not too small
+        self.setMinimumSize(600, 450)
+
+
+    def on_margin_clicked(self, nmargin, nline, modifiers):
+        # Toggle marker for the line the margin was clicked on
+        if self.markersAtLine(nline) != 0:
+            self.markerDelete(nline, self.ARROW_MARKER_NUM)
+        else:
+            self.markerAdd(nline, self.ARROW_MARKER_NUM)
 
 
 class Neme(QMainWindow):
@@ -22,10 +76,11 @@ class Neme(QMainWindow):
 
 
     def initUI(self):
-        self.scintilla = QsciScintilla()
-        #self.scintilla = QTextEdit()
-        self.setCentralWidget(self.scintilla)
+        self.scintilla = MyScintilla()
+        self.scintilla.setText(open(os.path.abspath(__file__)).read())
+        self.scintilla.setReadOnly(1)
 
+        self.setCentralWidget(self.scintilla)
         self.setGeometry(300, 300, 350, 250)
         self.setWindowTitle('Neme Editor')
         self.show()
