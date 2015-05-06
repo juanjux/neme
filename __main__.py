@@ -16,6 +16,7 @@ Objectives of this project:
     - avoid symbols that usually need shift in non-us keyboards (like '/' to search
       or ':' to enter commands).
     - but have the alt/options key as an option for shortcuts too
+    - use the function keys
 """
 
 import sys, os, enum
@@ -38,7 +39,7 @@ RETURN_LINES    = 5
 
 class EditorMode(enum.Enum):
     Typing  = 1
-    Normal  = 2
+    Movement  = 2
     Command = 3
 
 
@@ -92,7 +93,7 @@ class NemeTextWidget(QsciScintilla):
         self.setMinimumSize(600, 450)
         
         self.mode = None
-        self.changeMode(EditorMode.Normal)
+        self.setMode(EditorMode.Movement)
         self.prevWasEscapeFirst = False # used for kj escape secuence
 
 
@@ -114,20 +115,19 @@ class NemeTextWidget(QsciScintilla):
 
         if self.mode == EditorMode.Typing:
 
-            if modifiers == Qt.NoModifier:
-                # no modifiers
+            if modifiers == Qt.NoModifier: # NO MODIFIER
                 if e.key() == Qt.Key_Escape:
-                    self.changeMode(EditorMode.Normal)
+                    self.setMode(EditorMode.Movement)
                 elif e.key() == ESCAPEFIRST:
                     self.prevWasEscapeFirst = True
                     process = True
 
                 elif e.key() == ESCAPESECOND:
                     if self.prevWasEscapeFirst:
-                        # delete previous K and change to Normal
+                        # delete previous K and change to Movement
                         # FIXME: delete previous k
                         self.SendScintilla(QsciScintilla.SCI_DELETEBACK)
-                        self.changeMode(EditorMode.Normal)
+                        self.setMode(EditorMode.Movement)
                     else:
                         process = True
                     self.prevWasEscapeFirst = False
@@ -135,14 +135,17 @@ class NemeTextWidget(QsciScintilla):
                     # just write
                     process = True
 
-            elif modifiers == Qt.ControlModifier:
+            elif modifiers == Qt.ShiftModifier: # SHIFT
+                process = True
+
+            elif modifiers == Qt.ControlModifier: # CONTROL
                 # Ctrl + IK is PageUP/Down too like in normal mode
                 if e.key() == Qt.Key_I:
                     self.SendScintilla(QsciScintilla.SCI_PAGEUP)
                 elif e.key() == Qt.Key_K:
                     self.SendScintilla(QsciScintilla.SCI_PAGEDOWN)
 
-            elif modifiers == Qt.AltModifier:
+            elif modifiers == Qt.AltModifier: # ALT
                 # Alt + IKJL also moves the cursor in typing mode
                 if e.key() == Qt.Key_I:
                     self.SendScintilla(QsciScintilla.SCI_LINEUP)
@@ -154,16 +157,17 @@ class NemeTextWidget(QsciScintilla):
                     self.SendScintilla(QsciScintilla.SCI_CHARRIGHT)
 
         # =============================================================
-        # Normal Mode 
+        # Movement Mode 
         # =============================================================
 
-        elif self.mode == EditorMode.Normal:
+        elif self.mode == EditorMode.Movement:
             # IKJL move the cursor, Ctrl-I and Ctrl-K are PageUp/PageDown
-            if modifiers == Qt.NoModifier:
+            if modifiers == Qt.NoModifier: # NO MODIFIER
                 if e.key() in {Qt.Key_T, Qt.Key_A}:
-                    self.changeMode(EditorMode.Typing)
+                    # XXX mover el cursor 1 a la derecha salvo que sea fin de linea
+                    self.setMode(EditorMode.Typing)
                 elif e.key() == Qt.Key_Space:
-                    self.changeMode(EditorMode.Command)
+                    self.setMode(EditorMode.Command)
                 elif e.key() == Qt.Key_I: # line up
                     if modifiers == Qt.ControlModifier:
                         self.SendScintilla(QsciScintilla.SCI_PAGEUP)
@@ -192,12 +196,28 @@ class NemeTextWidget(QsciScintilla):
                     self.SendScintilla(QsciScintilla.SCI_WORDLEFT)
                 elif e.key() == Qt.Key_E: # next end of word
                     self.SendScintilla(QsciScintilla.SCI_WORDRIGHTEND)
+                elif e.key() == Qt.Key_U: # undo
+                    self.setReadOnly(0)
+                    self.undo()
+                    self.setReadOnly(1)
+                elif e.key() == Qt.Key_0: # move to start of line
+                    self.SendScintilla(QsciScintilla.SCI_HOME)
+                elif e.key() == Qt.Key_S: # first non-blank in line
+                    self.SendScintilla(QsciScintilla.SCI_VCHOME)
 
-            elif modifiers == Qt.AltModifier:
+            elif modifiers == Qt.ShiftModifier: # SHIFT
+                if e.key() == Qt.Key_Dollar: # end of line
+                    self.SendScintilla(QsciScintilla.SCI_LINEEND)
+
+            elif modifiers == Qt.AltModifier: # ALT
                 if e.key() == Qt.Key_E: # prev end of word
                     self.SendScintilla(QsciScintilla.SCI_WORDLEFTEND)
+                elif e.key() == Qt.Key_U: # redo
+                    self.setReadOnly(0)
+                    self.redo()
+                    self.setReadOnly(1)
 
-            elif modifiers == Qt.ControlModifier:
+            elif modifiers == Qt.ControlModifier:# CONTROL
                 if e.key() == Qt.Key_I: # page up
                     self.SendScintilla(QsciScintilla.SCI_PAGEUP)
                 elif e.key() == Qt.Key_K: # page down
@@ -209,11 +229,11 @@ class NemeTextWidget(QsciScintilla):
 
         elif self.mode == EditorMode.Command:
             if e.key() == Qt.Key_Escape:
-                self.changeMode(EditorMode.Normal)
+                self.setMode(EditorMode.Movement)
 
             elif e.key() == Qt.Key_Return:
                 self.processCommand()
-                self.changeMode(EditorMode.Normal)
+                self.setMode(EditorMode.Movement)
 
         if self.prevWasEscapeFirst and e.key() != ESCAPEFIRST:
             self.prevWasEscapeFirst = False
@@ -222,8 +242,7 @@ class NemeTextWidget(QsciScintilla):
             super().keyPressEvent(e)
     
 
-    # FIXME: property!
-    def changeMode(self, newmode):
+    def setMode(self, newmode):
         print('In changemode {}'.format(newmode))
         if newmode == self.mode:
             return
@@ -232,7 +251,7 @@ class NemeTextWidget(QsciScintilla):
             self.SendScintilla(QsciScintilla.SCI_SETCARETSTYLE, 1)
             self.setReadOnly(0)
 
-        elif newmode == EditorMode.Normal:
+        elif newmode == EditorMode.Movement:
             self.SendScintilla(QsciScintilla.SCI_SETCARETSTYLE, 2)
             self.setReadOnly(0)
             self.setReadOnly(1)
