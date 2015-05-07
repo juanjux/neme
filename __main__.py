@@ -322,7 +322,9 @@ class Neme(QMainWindow):
 
     def initUI(self):
         self.scintilla = NemeTextWidget()
-        self.scintilla.setText(open(os.path.abspath(__file__)).read())
+        self.scintilla.setText(
+                open(os.path.abspath(__file__), encoding="utf8").read()
+        )
         self.setCentralWidget(self.scintilla)
         self.setGeometry(300, 300, 350, 250)
         self.setWindowTitle('Neme Editor')
