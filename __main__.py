@@ -38,9 +38,9 @@ BACKSPACE_LINES = 5
 RETURN_LINES    = 5
 
 class EditorMode(enum.Enum):
-    Typing  = 1
-    Movement  = 2
-    Command = 3
+    Typing   = 1
+    Movement = 2
+    Command  = 3
 
 
 class NemeTextWidget(QsciScintilla):
@@ -95,6 +95,11 @@ class NemeTextWidget(QsciScintilla):
         self.mode = None
         self.setMode(EditorMode.Movement)
         self.prevWasEscapeFirst = False # used for kj escape secuence
+
+
+    #def _lineCharToPosition(self):
+        #line, index = self.getCursorPosition()
+        #return self.positionFromLineIndex(line, index)
 
 
     def on_margin_clicked(self, nmargin, nline, modifiers):
@@ -161,10 +166,11 @@ class NemeTextWidget(QsciScintilla):
         # =============================================================
 
         elif self.mode == EditorMode.Movement:
+
             # IKJL move the cursor, Ctrl-I and Ctrl-K are PageUp/PageDown
             if modifiers == Qt.NoModifier: # NO MODIFIER
                 if e.key() in {Qt.Key_T, Qt.Key_A}:
-                    # XXX mover el cursor 1 a la derecha salvo que sea fin de linea
+                    self.SendScintilla(QsciScintilla.SCI_CHARRIGHT)
                     self.setMode(EditorMode.Typing)
                 elif e.key() == Qt.Key_Space:
                     self.setMode(EditorMode.Command)
@@ -204,10 +210,47 @@ class NemeTextWidget(QsciScintilla):
                     self.SendScintilla(QsciScintilla.SCI_HOME)
                 elif e.key() == Qt.Key_S: # first non-blank in line
                     self.SendScintilla(QsciScintilla.SCI_VCHOME)
+                elif e.key() == Qt.Key_O: # insert empty line below current
+                    # FIXME: start at the right column after language indentation
+                    line, index = self.getCursorPosition()
+                    self.insertAt('\n', line+1, 0)
+                    self.setCursorPosition(line+1, 0)
+                    self.setMode(EditorMode.Typing)
 
             elif modifiers == Qt.ShiftModifier: # SHIFT
                 if e.key() == Qt.Key_Dollar: # end of line
                     self.SendScintilla(QsciScintilla.SCI_LINEEND)
+                elif e.key() == Qt.Key_A: # append after EOL
+                    self.SendScintilla(QsciScintilla.SCI_LINEEND)
+                    self.setMode(EditorMode.Typing)
+                elif e.key() == Qt.Key_I: # insert at the start of the line
+                    self.SendScintilla(QsciScintilla.SCI_VCHOME)
+                    self.setMode(EditorMode.Typing)
+                elif e.key() == Qt.Key_O: # insert empty line above current
+                    # FIXME: start at the right column after language indentation
+                    line, index = self.getCursorPosition()
+                    self.insertAt('\n', line-1, 0)
+                    self.setCursorPosition(line-1, 0)
+                    self.setMode(EditorMode.Typing)
+                elif e.key() == Qt.Key_J: # join line with line below
+                    # FIXME: undoing this leaves the cursor at the end of the line
+                    line, index = self.getCursorPosition()
+                    curLine     = self.text(line).rstrip()
+                    nextLine    = self.text(line + 1).lstrip() 
+                    if not nextLine:
+                        nextLine = '\n'
+
+                    self.setReadOnly(0)
+                    self.beginUndoAction()
+                    self.insertAt(' ' + nextLine, line, self.lineLength(line)-1)
+                    self.SendScintilla(QsciScintilla.SCI_LINEDOWN)
+                    self.SendScintilla(QsciScintilla.SCI_LINEDELETE)
+                    self.SendScintilla(QsciScintilla.SCI_LINEDELETE)
+                    self.SendScintilla(QsciScintilla.SCI_LINEUP)
+                    self.endUndoAction()
+                    self.setReadOnly(1)
+
+
 
             elif modifiers == Qt.AltModifier: # ALT
                 if e.key() == Qt.Key_E: # prev end of word
@@ -228,6 +271,7 @@ class NemeTextWidget(QsciScintilla):
         # ==============================================================
 
         elif self.mode == EditorMode.Command:
+
             if e.key() == Qt.Key_Escape:
                 self.setMode(EditorMode.Movement)
 
