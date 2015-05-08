@@ -53,6 +53,13 @@ class EditorMode(enum.Enum):
     ReplaceChar = 4
 
 
+class Direction(enum.Enum):
+    Left  = 1
+    Right = 2
+    Above = 3
+    Below = 4
+
+
 class NemeTextWidget(QSci):
     ARROW_MARKER_NUM = 0
 
@@ -111,11 +118,12 @@ class NemeTextWidget(QSci):
         self.replaceModeRepeat = 1
 
 
-    def _findWORDPosition(self, findRight=True):
+    def _findWORDPosition(self, direction):
         """
         Find next WORD. With findRight=True it will
         instead find the end of the previous WORD
         """
+        findRight       = (direction == Direction.Right)
         currentPos      = self.SendScintilla(QSci.SCI_GETCURRENTPOS)
         source          = bytearray(1)
         char            = -1
@@ -134,10 +142,11 @@ class NemeTextWidget(QSci):
         return -1
 
 
-    def _findWORDExtremePosition(self, start = True):
+    def _findWORDExtremePosition(self, direction):
         """
         Find the start or end of the current WORD
         """
+        start = (direction == Direction.Left)
         source = bytearray(1)
         currentPos = self.SendScintilla(QSci.SCI_GETCURRENTPOS)
         char = -1
@@ -166,6 +175,43 @@ class NemeTextWidget(QSci):
 
         print('DEBUG: number buffer: {}'.format(self.numberList))
         return haveToClearList
+
+
+    def _insertLine(self, direction):
+        adder = 1 if (direction == Direction.Below) else 0
+        line, index = self.getCursorPosition()
+        self.insertAt('\n', line+adder, 0)
+        self.setCursorPosition(line+adder, 0)
+
+ 
+    class SingleUndo:
+        def __init__(self, parent):
+            self.parent = parent
+        def __enter__(self):
+            self.parent.beginUndoAction()
+        def __exit__(self, type, value, traceback):
+            self.parent.endUndoAction()
+
+
+    class ReadWriteSingleUndo:
+        def __init__(self, parent):
+            self.parent = parent
+        def __enter__(self):
+            self.parent.beginUndoAction()
+            self.parent.setReadOnly(0)
+        def __exit__(self, type, value, traceback):
+            self.parent.endUndoAction()
+            self.parent.setReadOnly(1)
+
+
+
+    class ReadWrite:
+        def __init__(self, parent):
+            self.parent = parent
+        def __enter__(self):
+            self.parent.setReadOnly(0)
+        def __exit__(self, type, value, traceback):
+            self.parent.setReadOnly(1)
 
 
     def hasNumberPrefix(self):
@@ -323,23 +369,27 @@ class NemeTextWidget(QSci):
                         self.SendScintilla(QSci.SCI_WORDLEFT)
                 elif e.text() == 'e': # next end of word
                     for _ in range(self.getNumberPrefix()):
+                        self.SendScintilla(QSci.SCI_CHARRIGHT)
                         self.SendScintilla(QSci.SCI_WORDRIGHTEND)
+                        self.SendScintilla(QSci.SCI_CHARLEFT)
                 elif e.text() == 'u': # undo
-                    self.setReadOnly(0)
-                    for _ in range(self.getNumberPrefix()):
-                        self.undo()
-                    self.setReadOnly(1)
+                    with self.ReadWrite(self):
+                        for _ in range(self.getNumberPrefix()):
+                            self.undo()
                 elif e.text() == 's': # first non-blank in line
                     self.SendScintilla(QSci.SCI_VCHOME)
                 elif e.text() == 'o': # insert empty line below current
-                    self.beginUndoAction()
+                    with self.SingleUndo(self):
+                        # FIXME: start at the right column after language indentation
+                        for _ in range(self.getNumberPrefix()):
+                            self._insertLine(Direction.Below)
+                        self.setMode(EditorMode.Typing)
+                elif e.text() == 'O': # insert empty line above current
                     # FIXME: start at the right column after language indentation
-                    for _ in range(self.getNumberPrefix()):
-                        line, index = self.getCursorPosition()
-                        self.insertAt('\n', line+1, 0)
-                        self.setCursorPosition(line+1, 0)
-                    self.setMode(EditorMode.Typing)
-                    self.endUndoAction()
+                    with self.SingleUndo(self):
+                        for _ in range(self.getNumberPrefix()):
+                            self._insertLine(Direction.Above)
+                        self.setMode(EditorMode.Typing)
                 elif e.text() == 'g': # goto line, only with numeric prefix
                     if not self.hasNumberPrefix():
                         # XXX start command line withj 'g' command pre-written
@@ -359,65 +409,66 @@ class NemeTextWidget(QSci):
                 elif e.text() == 'I': # insert at the start of the line
                     self.SendScintilla(QSci.SCI_VCHOME)
                     self.setMode(EditorMode.Typing)
-                elif e.text() == 'O': # insert empty line above current
-                    # FIXME: start at the right column after language indentation
-                    self.beginUndoAction()
-                    for _ in range(self.getNumberPrefix()):
-                        line, index = self.getCursorPosition()
-                        self.insertAt('\n', line, 0)
-                        self.setCursorPosition(line, 0)
-                        self.setMode(EditorMode.Typing)
-                    self.endUndoAction()
                 elif e.text() == 'J': # join line with line below
                     # FIXME: undoing this leaves the cursor at the end of the line
-                    self.beginUndoAction()
-                    self.setReadOnly(0)
-                    for _ in range(self.getNumberPrefix(True)):
-                        line, index = self.getCursorPosition()
-                        nextLine    = self.text(line + 1).lstrip()
-                        if not nextLine:
-                            nextLine = '\n'
+                    with self.ReadWriteSingleUndo(self):
+                        for _ in range(self.getNumberPrefix(True)):
+                            line, index = self.getCursorPosition()
+                            nextLine    = self.text(line + 1).lstrip()
+                            if not nextLine:
+                                nextLine = '\n'
 
-                        self.insertAt(' ' + nextLine, line, self.lineLength(line)-1)
-                        self.SendScintilla(QSci.SCI_LINEDOWN)
-                        self.SendScintilla(QSci.SCI_LINEDELETE)
-                        self.SendScintilla(QSci.SCI_LINEDELETE)
-                        self.SendScintilla(QSci.SCI_LINEUP)
-                    self.setReadOnly(1)
-                    self.endUndoAction()
+                            self.insertAt(' ' + nextLine, line, self.lineLength(line)-1)
+                            self.SendScintilla(QSci.SCI_LINEDOWN)
+                            self.SendScintilla(QSci.SCI_LINEDELETE)
+                            self.SendScintilla(QSci.SCI_LINEDELETE)
+                            self.SendScintilla(QSci.SCI_LINEUP)
                 elif e.text() == 'W': # next WORD
                     for _ in range(self.getNumberPrefix()):
-                        nextWordPos = self._findWORDPosition()
+                        nextWordPos = self._findWORDPosition(Direction.Right)
                         if nextWordPos != -1:
                             self.SendScintilla(QSci.SCI_GOTOPOS, nextWordPos)
-                elif e.text() == 'E': # prev WORD end
+                elif e.text() == 'E': # next WORD end
                     for _ in range(self.getNumberPrefix()):
-                        prevWordEndPos = self._findWORDPosition(findRight=False)
-                        if prevWordEndPos != -1:
-                            self.SendScintilla(QSci.SCI_GOTOPOS, prevWordEndPos)
+                        nextWordEndPos = self._findWORDPosition(Direction.Right)
+                        if nextWordEndPos != -1:
+                            self.SendScintilla(QSci.SCI_GOTOPOS, nextWordEndPos)
+                            wordEnd = self._findWORDExtremePosition(Direction.Right)
+                            self.SendScintilla(QSci.SCI_GOTOPOS, wordEnd)
                 elif e.text() == 'B': # prev WORD start
                     for _ in range(self.getNumberPrefix()):
-                        prevWordEndPos = self._findWORDPosition(findRight=False)
+                        prevWordEndPos = self._findWORDPosition(Direction.Left)
                         if prevWordEndPos != -1:
                             self.SendScintilla(QSci.SCI_GOTOPOS, prevWordEndPos)
-                            wordStart = self._findWORDExtremePosition(start = True)
+                            wordStart = self._findWORDExtremePosition(Direction.Left)
                             self.SendScintilla(QSci.SCI_GOTOPOS, wordStart)
                 elif e.text() == 'G': # go to the last line
                     self.SendScintilla(QSci.SCI_GOTOLINE, self.lines())
                 elif e.text() == 'x': # delete char at the cursor (like the del key)
-                    self.setReadOnly(0)
-                    self.beginUndoAction()
-                    for _ in range(self.getNumberPrefix()):
-                        self.SendScintilla(QSci.SCI_CLEAR)
-                    self.endUndoAction()
-                    self.setReadOnly(1)
+                    with self.ReadWriteSingleUndo(self):
+                        for _ in range(self.getNumberPrefix()):
+                            self.SendScintilla(QSci.SCI_CLEAR)
                 elif e.text() == 'X': # delete char before the cursor (like the backspace key)
-                    self.setReadOnly(0)
-                    self.beginUndoAction()
-                    for _ in range(self.getNumberPrefix()):
-                        self.SendScintilla(QSci.SCI_DELETEBACK)
-                    self.endUndoAction()
-                    self.setReadOnly(1)
+                    with self.ReadWriteSingleUndo(self):
+                        for _ in range(self.getNumberPrefix()):
+                            self.SendScintilla(QSci.SCI_DELETEBACK)
+                elif e.text() == '>': # indent
+                    # XXX falta el otro
+                    with self.ReadWriteSingleUndo(self):
+                        curLine, _ = self.getCursorPosition()
+                        for _ in range(self.getNumberPrefix()):
+                            self.indent(curLine)
+                            curLine += 1
+                elif e.text() == 'p': # paste at cursor position
+                    with self.ReadWriteSingleUndo(self):
+                        for _ in range(self.getNumberPrefix()):
+                            self.paste()
+                elif e.text() == 'P': # paste on a new line below cursor position
+                    with self.ReadWriteSingleUndo(self):
+                        for _ in range(self.getNumberPrefix()):
+                            self._insertLine(Direction.Below)
+                            self.paste()
+
                 else:
                     # probably single shift modifier
                     clearnumberList = False
@@ -426,11 +477,15 @@ class NemeTextWidget(QSci):
                 if e.key() == Qt.Key_E: # prev end of word
                     for _ in range(self.getNumberPrefix()):
                         self.SendScintilla(QSci.SCI_WORDLEFTEND)
-                elif e.key() == Qt.Key_U: # redo
-                    self.setReadOnly(0)
+                        self.SendScintilla(QSci.SCI_CHARLEFT)
+                elif e.key() == Qt.Key_B: # prev end of WORD
                     for _ in range(self.getNumberPrefix()):
-                        self.redo()
-                    self.setReadOnly(1)
+                        prevWordEndPos = self._findWORDPosition(Direction.Left)
+                        self.SendScintilla(QSci.SCI_GOTOPOS, prevWordEndPos)
+                elif e.key() == Qt.Key_U: # redo
+                    with self.ReadWrite(self):
+                        for _ in range(self.getNumberPrefix()):
+                            self.redo()
 
             elif modifiers == Qt.ControlModifier:# CONTROL
                 if e.key() == Qt.Key_I: # page up
@@ -463,20 +518,16 @@ class NemeTextWidget(QSci):
             elif not e.text():
                 pass
             else:
-                self.setReadOnly(0)
-                self.beginUndoAction()
+                with self.ReadWriteSingleUndo(self):
+                    for _ in range(self.replaceModeRepeat):
+                        curLine, curIndex = self.getCursorPosition()
+                        self.setSelection(curLine, curIndex, curLine, curIndex+1)
+                        self.cut()
+                        self.insertAt(e.text(), curLine, curIndex)
 
-                for _ in range(self.replaceModeRepeat):
-                    curLine, curIndex = self.getCursorPosition()
-                    self.setSelection(curLine, curIndex, curLine, curIndex+1)
-                    self.cut()
-                    self.insertAt(e.text(), curLine, curIndex)
+                        if self.replaceModeRepeat > 1:
+                            self.setCursorPosition(curLine, curIndex+1)
 
-                    if self.replaceModeRepeat > 1:
-                        self.setCursorPosition(curLine, curIndex+1)
-
-                self.endUndoAction()
-                self.setReadOnly(1)
                 self.replaceModeRepeat = 1
                 self.setMode(EditorMode.Movement)
 
