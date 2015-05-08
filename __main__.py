@@ -29,10 +29,13 @@ import sys, os, enum
 # FIXME: remote millions of hardcodings, MVC, etc...
 # (I shouldn't have uploaded this to github so soon...)
 
+# FIXME: remote also command-key hardcodings (everything should be remapable, but that is
+# not a priority right now)
+
 # FIXME: remove these *'s
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui     import *
-from PyQt5.QtCore    import Qt
+from PyQt5.QtCore    import Qt, QByteArray
 from PyQt5.Qsci      import QsciScintilla as QSci, QsciLexerPython
 
 # FIXME: make these configurable
@@ -47,10 +50,11 @@ WHITESPACE = {32, 10, 13, 9}
 
 
 class EditorMode(enum.Enum):
-    Typing      = 1
-    Movement    = 2
-    Command     = 3
-    ReplaceChar = 4
+    Typing        = 1
+    Movement      = 2
+    Command       = 3
+    ReplaceChar   = 4
+    FindChar      = 5
 
 
 class Direction(enum.Enum):
@@ -115,7 +119,9 @@ class NemeTextWidget(QSci):
         self.mode = None
         self.setMode(EditorMode.Movement)
         self.prevWasEscapeFirst = False # used for kj escape secuence
-        self.replaceModeRepeat = 1
+        self.replaceModeRepeat = 1 # used to store the number argument before a replace (r) command
+        self.lineFindChar = '' # used to store the char to find in a line (f or F commands)
+        self.lineFindCharDirection = Direction.Right
 
 
     def _findWORDPosition(self, direction):
@@ -183,7 +189,20 @@ class NemeTextWidget(QSci):
         self.insertAt('\n', line+adder, 0)
         self.setCursorPosition(line+adder, 0)
 
- 
+
+    def _jumpToCharInLineFromPos(self, char, direction):
+        curLine, curIndex = self.getCursorPosition()
+        lineText = self.text(curLine)
+
+        if direction == Direction.Right:
+            charPos = lineText.find(char, curIndex+1)
+        else:
+            charPos = lineText.rfind(char, 0, curIndex-1)
+
+        if charPos != -1:
+            self.setCursorPosition(curLine, charPos)
+
+
     class SingleUndo:
         def __init__(self, parent):
             self.parent = parent
@@ -237,22 +256,22 @@ class NemeTextWidget(QSci):
 
 
     def setMode(self, newmode):
+        # TODO: Change cursor color on special modes?
         if newmode == self.mode:
             return
 
         if newmode == EditorMode.Typing:
             self.SendScintilla(QSci.SCI_SETCARETSTYLE, 1)
             self.setReadOnly(0)
-
         elif newmode == EditorMode.Movement:
             self.SendScintilla(QSci.SCI_SETCARETSTYLE, 2)
             self.setReadOnly(1)
-
         elif newmode == EditorMode.Command:
             self.setReadOnly(1)
-
         elif newmode == EditorMode.ReplaceChar:
             self.SendScintilla(QSci.SCI_SETCARETSTYLE, 1)
+            self.setReadOnly(1)
+        elif newmode == EditorMode.FindChar:
             self.setReadOnly(1)
 
         self.mode = newmode
@@ -453,11 +472,16 @@ class NemeTextWidget(QSci):
                         for _ in range(self.getNumberPrefix()):
                             self.SendScintilla(QSci.SCI_DELETEBACK)
                 elif e.text() == '>': # indent
-                    # XXX falta el otro
                     with self.ReadWriteSingleUndo(self):
                         curLine, _ = self.getCursorPosition()
                         for _ in range(self.getNumberPrefix()):
                             self.indent(curLine)
+                            curLine += 1
+                elif e.text() == '<': # unindent
+                    with self.ReadWriteSingleUndo(self):
+                        curLine, _ = self.getCursorPosition()
+                        for _ in range(self.getNumberPrefix()):
+                            self.unindent(curLine)
                             curLine += 1
                 elif e.text() == 'p': # paste at cursor position
                     with self.ReadWriteSingleUndo(self):
@@ -468,7 +492,21 @@ class NemeTextWidget(QSci):
                         for _ in range(self.getNumberPrefix()):
                             self._insertLine(Direction.Below)
                             self.paste()
-
+                elif e.text() == 'f': # find char in line front
+                    self.lineFindCharDirection = Direction.Right
+                    self.setMode(EditorMode.FindChar)
+                elif e.text() == 'F': # find char in line back
+                    self.lineFindCharDirection = Direction.Left
+                    self.setMode(EditorMode.FindChar)
+                elif e.text() == ';': # repeat search of char in line
+                    self._jumpToCharInLineFromPos(self.lineFindChar,
+                                                  self.lineFindCharDirection)
+                elif e.text() == ',': # repeat search of char in line in reverse direction
+                    if self.lineFindCharDirection == Direction.Left:
+                        revDirection = Direction.Right
+                    else:
+                        revDirection = Direction.Left
+                    self._jumpToCharInLineFromPos(self.lineFindChar, revDirection)
                 else:
                     # probably single shift modifier
                     clearnumberList = False
@@ -531,6 +569,22 @@ class NemeTextWidget(QSci):
                 self.replaceModeRepeat = 1
                 self.setMode(EditorMode.Movement)
 
+        # ==============================================================
+        # Find Char Front Mode
+        # ==============================================================
+
+        elif self.mode == EditorMode.FindChar:
+            if e.key() == Qt.Key_Escape:
+                self.setMode(EditorMode.Movement)
+            elif not e.text():
+                pass
+            else:
+                self.lineFindChar = e.text()
+                self._jumpToCharInLineFromPos(self.lineFindChar,
+                                              self.lineFindCharDirection)
+                self.setMode(EditorMode.Movement)
+
+
         if self.prevWasEscapeFirst and e.text() != ESCAPEFIRST:
             # clear the escape chord if the second char doesnt follows the first
             self.prevWasEscapeFirst = False
@@ -541,6 +595,7 @@ class NemeTextWidget(QSci):
 
         if process:
             super().keyPressEvent(e)
+
 
 
 class Neme(QMainWindow):
