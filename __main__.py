@@ -43,9 +43,10 @@ WHITESPACE = {32, 10, 13, 9}
 
 
 class EditorMode(enum.Enum):
-    Typing   = 1
-    Movement = 2
-    Command  = 3
+    Typing      = 1
+    Movement    = 2
+    Command     = 3
+    ReplaceChar = 4
 
 
 class NemeTextWidget(QSci):
@@ -160,6 +161,10 @@ class NemeTextWidget(QSci):
 
         print('DEBUG: number buffer: {}'.format(self.numberList))
         return haveToClearList
+
+
+    def hasNumberPrefix(self):
+        return bool(len(self.numberList))
 
 
     def getNumberPrefix(self, limitByMaxLines = False):
@@ -303,6 +308,16 @@ class NemeTextWidget(QSci):
                         self.setCursorPosition(line+1, 0)
                     self.setMode(EditorMode.Typing)
                     self.endUndoAction()
+                elif e.key() == Qt.Key_G: # goto line, only with numeric prefix
+                    if not self.hasNumberPrefix():
+                        # XXX start command line withj 'g' command pre-written
+                        pass
+                    else:
+                        line = self.getNumberPrefix(True)
+                        self.SendScintilla(QSci.SCI_GOTOLINE, line)
+                elif e.key() == Qt.Key_R:
+                    self.setMode(EditorMode.ReplaceChar)
+                
                 else:
                     # probably single modifier
                     clearnumberList = False
@@ -359,6 +374,8 @@ class NemeTextWidget(QSci):
                             self.SendScintilla(QSci.SCI_GOTOPOS, prevWordEndPos)
                             wordStart = self._findWORDExtremePosition(start = True)
                             self.SendScintilla(QSci.SCI_GOTOPOS, wordStart)
+                elif e.key() == Qt.Key_G: # go to the last line
+                    self.SendScintilla(QSci.SCI_GOTOLINE, self.lines())
 
 
             elif modifiers == Qt.AltModifier: # ALT
@@ -392,6 +409,17 @@ class NemeTextWidget(QSci):
                 self.processCommand()
                 self.setMode(EditorMode.Movement)
 
+        # ==============================================================
+        # ReplaceChar Mode
+        # ==============================================================
+
+        elif self.mode == EditorMode.ReplaceChar:
+            keySeq = QKeySequence(e.key())
+            print('XXX KEY: ', keySeq.toString())
+            print('XXX ScanCode: ', e.nativeScanCode())
+            print('XXX Text: ', e.text())
+
+
         if self.prevWasEscapeFirst and e.key() != ESCAPEFIRST:
             self.prevWasEscapeFirst = False
 
@@ -416,7 +444,10 @@ class NemeTextWidget(QSci):
             self.setReadOnly(1)
 
         elif newmode == EditorMode.Command:
-            pass
+            self.setReadOnly(1)
+
+        elif newmode == EditorMode.ReplaceChar:
+            self.SendScintilla(QSci.SCI_SETCARETSTYLE, 1)
             self.setReadOnly(1)
 
         self.mode = newmode
