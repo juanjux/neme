@@ -190,11 +190,38 @@ class NemeTextWidget(QSci):
             self.markerAdd(nline, self.ARROW_MARKER_NUM)
 
 
+    def setMode(self, newmode):
+        if newmode == self.mode:
+            return
+
+        if newmode == EditorMode.Typing:
+            self.SendScintilla(QSci.SCI_SETCARETSTYLE, 1)
+            self.setReadOnly(0)
+
+        elif newmode == EditorMode.Movement:
+            self.SendScintilla(QSci.SCI_SETCARETSTYLE, 2)
+            self.setReadOnly(1)
+
+        elif newmode == EditorMode.Command:
+            self.setReadOnly(1)
+
+        elif newmode == EditorMode.ReplaceChar:
+            self.SendScintilla(QSci.SCI_SETCARETSTYLE, 1)
+            self.setReadOnly(1)
+
+        self.mode = newmode
+        print('NewMode: {}'.format(self.mode))
+
+
+    def processCommand(self):
+        # FIXME: implement
+        pass
+
+
     def keyPressEvent(self, e):
         process         = False
         clearnumberList = True
-
-        modifiers = QApplication.keyboardModifiers()
+        modifiers       = QApplication.keyboardModifiers()
 
         # =============================================================
         # Typing Mode
@@ -344,19 +371,19 @@ class NemeTextWidget(QSci):
                 elif e.text() == 'J': # join line with line below
                     # FIXME: undoing this leaves the cursor at the end of the line
                     self.beginUndoAction()
+                    self.setReadOnly(0)
                     for _ in range(self.getNumberPrefix(True)):
                         line, index = self.getCursorPosition()
                         nextLine    = self.text(line + 1).lstrip()
                         if not nextLine:
                             nextLine = '\n'
 
-                        self.setReadOnly(0)
                         self.insertAt(' ' + nextLine, line, self.lineLength(line)-1)
                         self.SendScintilla(QSci.SCI_LINEDOWN)
                         self.SendScintilla(QSci.SCI_LINEDELETE)
                         self.SendScintilla(QSci.SCI_LINEDELETE)
                         self.SendScintilla(QSci.SCI_LINEUP)
-                        self.setReadOnly(1)
+                    self.setReadOnly(1)
                     self.endUndoAction()
                 elif e.text() == 'W': # next WORD
                     for _ in range(self.getNumberPrefix()):
@@ -377,6 +404,20 @@ class NemeTextWidget(QSci):
                             self.SendScintilla(QSci.SCI_GOTOPOS, wordStart)
                 elif e.text() == 'G': # go to the last line
                     self.SendScintilla(QSci.SCI_GOTOLINE, self.lines())
+                elif e.text() == 'x': # delete char at the cursor (like the del key)
+                    self.setReadOnly(0)
+                    self.beginUndoAction()
+                    for _ in range(self.getNumberPrefix()):
+                        self.SendScintilla(QSci.SCI_CLEAR)
+                    self.endUndoAction()
+                    self.setReadOnly(1)
+                elif e.text() == 'X': # delete char before the cursor (like the backspace key)
+                    self.setReadOnly(0)
+                    self.beginUndoAction()
+                    for _ in range(self.getNumberPrefix()):
+                        self.SendScintilla(QSci.SCI_DELETEBACK)
+                    self.endUndoAction()
+                    self.setReadOnly(1)
                 else:
                     # probably single shift modifier
                     clearnumberList = False
@@ -422,60 +463,33 @@ class NemeTextWidget(QSci):
             elif not e.text():
                 pass
             else:
+                self.setReadOnly(0)
+                self.beginUndoAction()
+
                 for _ in range(self.replaceModeRepeat):
                     curLine, curIndex = self.getCursorPosition()
                     self.setSelection(curLine, curIndex, curLine, curIndex+1)
-                    self.setReadOnly(0)
-                    self.beginUndoAction()
                     self.cut()
                     self.insertAt(e.text(), curLine, curIndex)
-                    self.endUndoAction()
-                    self.setReadOnly(1)
-                    self.setMode(EditorMode.Movement)
 
                     if self.replaceModeRepeat > 1:
                         self.setCursorPosition(curLine, curIndex+1)
+
+                self.endUndoAction()
+                self.setReadOnly(1)
                 self.replaceModeRepeat = 1
-
-
+                self.setMode(EditorMode.Movement)
 
         if self.prevWasEscapeFirst and e.text() != ESCAPEFIRST:
+            # clear the escape chord if the second char doesnt follows the first
             self.prevWasEscapeFirst = False
 
         if clearnumberList:
+            # clearnumberList is set to false when the char is a number
             self.numberList.clear()
 
         if process:
             super().keyPressEvent(e)
-
-
-    def setMode(self, newmode):
-        if newmode == self.mode:
-            return
-
-        if newmode == EditorMode.Typing:
-            self.SendScintilla(QSci.SCI_SETCARETSTYLE, 1)
-            self.setReadOnly(0)
-
-        elif newmode == EditorMode.Movement:
-            self.SendScintilla(QSci.SCI_SETCARETSTYLE, 2)
-            self.setReadOnly(0)
-            self.setReadOnly(1)
-
-        elif newmode == EditorMode.Command:
-            self.setReadOnly(1)
-
-        elif newmode == EditorMode.ReplaceChar:
-            self.SendScintilla(QSci.SCI_SETCARETSTYLE, 1)
-            self.setReadOnly(1)
-
-        self.mode = newmode
-        print('NewMode: {}'.format(self.mode))
-
-
-    def processCommand(self):
-        # FIXME: implement
-        pass
 
 
 class Neme(QMainWindow):
