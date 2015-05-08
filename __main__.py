@@ -24,21 +24,20 @@ BUGS:
     - By Line selection doesnt seem to work (it does the same as by stream). I could workaround
       it or wait for an upstream fix or patch scintilla myself
     - Undo should restore the cursor at the line it was before the action that is being undo-ed
+TODO:
+    - i18n, string translations, file encodings other than UTF8, etc.
+    - split this into several component classes, currently is mostly a Big Ugly class
+    - make the command-keys configurable (currently: hardcoded)
 """
 
 import sys, os, enum
+from pprint import pprint
 
-
-# FIXME: remote millions of hardcodings, MVC, etc...
-# (I shouldn't have uploaded this to github so soon...)
-
-# FIXME: remote also command-key hardcodings (everything should be remapable, but that is
-# not a priority right now)
 
 # FIXME: remove these *'s
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui     import *
-from PyQt5.QtCore    import Qt, QEvent, QCoreApplication
+from PyQt5.QtCore    import Qt, QEvent, QCoreApplication, pyqtSignal
 from PyQt5.Qsci      import QsciScintilla as QSci, QsciLexerPython
 
 # FIXME: make these configurable
@@ -76,6 +75,9 @@ class SelectionMode(enum.IntEnum):
 
 class NemeTextWidget(QSci):
     ARROW_MARKER_NUM = 0
+
+    # Signals
+    fileChanged = pyqtSignal(str, name='fileChanged')
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -140,6 +142,31 @@ class NemeTextWidget(QSci):
         self.lastSearchText = ''
         self.lastSearchDirection = Direction.Below
         self.lastSearchFlags = 0
+
+
+    def _openWithDialog(self):
+        if self.isModified():
+            popup = QMessageBox(self)
+            popup.setText('The file has been modified')
+            popup.setInformativeText('Save changes?')
+            popup.setStandardButtons(QMessageBox.Save   |
+                                     QMessageBox.Cancel |
+                                     QMessageBox.Discard)
+            popup.setDefaultButton(QMessageBox.Save)
+            answer = popup.exec_()
+        else:
+            answer = QMessageBox.Discard
+
+        if answer == QMessageBox.Save:
+            self._saveFile()
+
+        if answer != QMessageBox.Cancel:
+            fname = QFileDialog.getOpenFileName(self, 'Open file')
+            if len(fname[0]):
+                self.bufferFileName = fname[0]
+                self.setText(open(self.bufferFileName, encoding='utf-8').read())
+                self.setModified(False)
+                self.fileChanged.emit(self.bufferFileName)
 
 
     def _findWORDPosition(self, direction):
@@ -464,6 +491,11 @@ class NemeTextWidget(QSci):
                     else:
                         process = True
                     self.prevWasEscapeFirst = False
+                elif e.key() == Qt.Key_F1: # save
+                    # XXX implement 
+                    self._save()
+                elif e.key() == Qt.Key_F2: # load file
+                    self._openWithDialog()
                 else:
                     # just write
                     process = True
@@ -727,6 +759,11 @@ class NemeTextWidget(QSci):
                     else:
                         direction = Direction.Below
                     self._repeatLastSearch(direction)
+                elif e.key() == Qt.Key_F1: # save
+                    # XXX implement 
+                    self._save()
+                elif e.key() == Qt.Key_F2: # load file
+                    self._openWithDialog()
                 else:
                     # probably single modifier key pressed
                     clearnumberList = False
@@ -841,12 +878,17 @@ class Neme(QMainWindow):
     def initUI(self):
         self.scintilla = NemeTextWidget()
         self.scintilla.setText(
-                open(os.path.abspath(__file__), encoding="utf8").read()
+                open(os.path.abspath('testfile.py'),
+                     encoding="utf8").read()
         )
+        self.scintilla.setModified(False)
         self.setCentralWidget(self.scintilla)
         self.setGeometry(300, 300, 350, 250)
-        self.setWindowTitle('Neme Editor')
+        self.scintilla.fileChanged.connect(self.handleFileChange)
         self.show()
+
+    def handleFileChange(self, fname):
+        self.setWindowTitle('Neme - {}'.format(fname))
 
 
 if __name__ == '__main__':
