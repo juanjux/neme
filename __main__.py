@@ -35,7 +35,7 @@ import sys, os, enum
 # FIXME: remove these *'s
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui     import *
-from PyQt5.QtCore    import Qt, QByteArray
+from PyQt5.QtCore    import Qt
 from PyQt5.Qsci      import QsciScintilla as QSci, QsciLexerPython
 
 # FIXME: make these configurable
@@ -201,6 +201,20 @@ class NemeTextWidget(QSci):
 
         if charPos != -1:
             self.setCursorPosition(curLine, charPos)
+
+
+    def _deleteLines(self, direction):
+        multiplier = 1 if direction == Direction.Below else -1
+        numLines = self.getNumberPrefix(True)
+        curLine, _ = self.getCursorPosition()
+        self.setSelection(curLine, 0, curLine + (numLines * multiplier), 0)
+        self.cut()
+
+
+    def _deleteToEOL(self):
+        curLine, curIndex = self.getCursorPosition()
+        self.setSelection(curLine, curIndex, curLine, self.lineLength(curLine) - 1)
+        self.cut()
 
 
     class SingleUndo:
@@ -411,7 +425,7 @@ class NemeTextWidget(QSci):
                         self.setMode(EditorMode.Typing)
                 elif e.text() == 'g': # goto line, only with numeric prefix
                     if not self.hasNumberPrefix():
-                        # XXX start command line withj 'g' command pre-written
+                        # XXX start command line with 'g' command pre-written
                         pass
                     else:
                         line = self.getNumberPrefix(True)
@@ -465,8 +479,10 @@ class NemeTextWidget(QSci):
                     self.SendScintilla(QSci.SCI_GOTOLINE, self.lines())
                 elif e.text() == 'x': # delete char at the cursor (like the del key)
                     with self.ReadWriteSingleUndo(self):
-                        for _ in range(self.getNumberPrefix()):
-                            self.SendScintilla(QSci.SCI_CLEAR)
+                        num = self.getNumberPrefix()
+                        curLine, curIndex = self.getCursorPosition()
+                        self.setSelection(curLine, curIndex, curLine, curIndex+num)
+                        self.cut()
                 elif e.text() == 'X': # delete char before the cursor (like the backspace key)
                     with self.ReadWriteSingleUndo(self):
                         for _ in range(self.getNumberPrefix()):
@@ -507,6 +523,28 @@ class NemeTextWidget(QSci):
                     else:
                         revDirection = Direction.Left
                     self._jumpToCharInLineFromPos(self.lineFindChar, revDirection)
+                elif e.text() == 'd': # delete
+                    if not self.hasNumberPrefix():
+                        # XXX start command line with 'd' pre-written
+                        pass
+                    else:
+                        with self.ReadWrite(self):
+                            self._deleteLines(Direction.Below)
+                elif e.text() == 'D': # delete from cursor to EOL
+                    with self.ReadWrite(self):
+                        self._deleteToEOL()
+                elif e.text() == 'c': # delete and change to typing mode
+                    if not self.hasNumberPrefix():
+                        # XXX start command line with 'c' pre-written
+                         pass
+                    else:
+                        with self.ReadWrite(self):
+                            self._deleteLines(Direction.Below)
+                            self.setMode(EditorMode.Typing)
+                elif e.text() == 'C': # delete from cursor to EOL and change to typing mode
+                    with self.ReadWrite(self):
+                        self._deleteToEOL()
+                        self.setMode(EditorMode.Typing)
                 else:
                     # probably single shift modifier
                     clearnumberList = False
@@ -560,7 +598,7 @@ class NemeTextWidget(QSci):
                     for _ in range(self.replaceModeRepeat):
                         curLine, curIndex = self.getCursorPosition()
                         self.setSelection(curLine, curIndex, curLine, curIndex+1)
-                        self.cut()
+                        self.SendScintilla(QSci.SCI_CLEAR)
                         self.insertAt(e.text(), curLine, curIndex)
 
                         if self.replaceModeRepeat > 1:
