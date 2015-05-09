@@ -110,13 +110,13 @@ class NemeTextWidget(QSci):
         Find next WORD. With findRight=True it will
         instead find the end of the previous WORD
         """
-        source = bytearray(1)
-        currentPos = self.SendScintilla(QSci.SCI_GETCURRENTPOS)
-        char = -1
+        currentPos      = self.SendScintilla(QSci.SCI_GETCURRENTPOS)
+        source          = bytearray(1)
+        char            = -1
         foundWhiteSpace = False
         adder = 1 if findRight else -1
 
-        while char != 0:
+        while (findRight and char != 0) or (not findRight and currentPos != 0):
             char = self.SendScintilla(QSci.SCI_GETCHARAT, currentPos)
             if foundWhiteSpace and char not in WHITESPACE:
                 # found the next word
@@ -167,7 +167,9 @@ class NemeTextWidget(QSci):
             number = 1
         else:
             number = int(''.join([str(i) for i in self.numberList]))
-        return min(number, self.lines())
+        if limitByMaxLines:
+            number = min(number, self.lines())
+        return number
 
 
     def on_margin_clicked(self, nmargin, nline, modifiers):
@@ -341,19 +343,22 @@ class NemeTextWidget(QSci):
                         self.setReadOnly(1)
                     self.endUndoAction()
                 elif e.key() == Qt.Key_W: # next WORD
-                    nextWordPos = self._findWORDPosition()
-                    if nextWordPos != -1:
-                        self.SendScintilla(QSci.SCI_GOTOPOS, nextWordPos)
+                    for _ in range(self.getNumberPrefix()):
+                        nextWordPos = self._findWORDPosition()
+                        if nextWordPos != -1:
+                            self.SendScintilla(QSci.SCI_GOTOPOS, nextWordPos)
                 elif e.key() == Qt.Key_E: # prev WORD end
-                    prevWordEndPos = self._findWORDPosition(findRight=False)
-                    if prevWordEndPos != -1:
-                        self.SendScintilla(QSci.SCI_GOTOPOS, prevWordEndPos)
+                    for _ in range(self.getNumberPrefix()):
+                        prevWordEndPos = self._findWORDPosition(findRight=False)
+                        if prevWordEndPos != -1:
+                            self.SendScintilla(QSci.SCI_GOTOPOS, prevWordEndPos)
                 elif e.key() == Qt.Key_B: # prev WORD start
-                    prevWordEndPos = self._findWORDPosition(findRight=False)
-                    if prevWordEndPos != -1:
-                        self.SendScintilla(QSci.SCI_GOTOPOS, prevWordEndPos)
-                        wordStart = self._findWORDExtremePosition(start = True)
-                        self.SendScintilla(QSci.SCI_GOTOPOS, wordStart)
+                    for _ in range(self.getNumberPrefix()):
+                        prevWordEndPos = self._findWORDPosition(findRight=False)
+                        if prevWordEndPos != -1:
+                            self.SendScintilla(QSci.SCI_GOTOPOS, prevWordEndPos)
+                            wordStart = self._findWORDExtremePosition(start = True)
+                            self.SendScintilla(QSci.SCI_GOTOPOS, wordStart)
 
 
             elif modifiers == Qt.AltModifier: # ALT
