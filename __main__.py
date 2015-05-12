@@ -19,11 +19,18 @@ Objectives of this project:
     - use the function keys too
 """
 
+"""
+BUGS:
+"""
+
 import sys, os, enum
 
 
 # FIXME: remote millions of hardcodings, MVC, etc...
 # (I shouldn't have uploaded this to github so soon...)
+
+# FIXME: remote also command-key hardcodings (everything should be remapable, but that is
+# not a priority right now)
 
 # FIXME: remove these *'s
 from PyQt5.QtWidgets import *
@@ -32,20 +39,29 @@ from PyQt5.QtCore    import Qt
 from PyQt5.Qsci      import QsciScintilla as QSci, QsciLexerPython
 
 # FIXME: make these configurable
-ESCAPEFIRST     = Qt.Key_K
-ESCAPESECOND    = Qt.Key_J
+ESCAPEFIRST     = "k"
+ESCAPESECOND    = "j"
 BACKSPACE_LINES = 5
 RETURN_LINES    = 5
 NUMSETKEYS = {Qt.Key_0: '0', Qt.Key_1: '1', Qt.Key_2: '2', Qt.Key_3: '3',
               Qt.Key_4: '4', Qt.Key_5: '5', Qt.Key_6: '6', Qt.Key_7: '7',
               Qt.Key_8: '8', Qt.Key_9: '9'}
-WHITESPACE = {32, 10, 13, 9} 
+WHITESPACE = {32, 10, 13, 9}
 
 
 class EditorMode(enum.Enum):
-    Typing   = 1
-    Movement = 2
-    Command  = 3
+    Typing        = 1
+    Movement      = 2
+    Command       = 3
+    ReplaceChar   = 4
+    FindChar      = 5
+
+
+class Direction(enum.Enum):
+    Left  = 1
+    Right = 2
+    Above = 3
+    Below = 4
 
 
 class NemeTextWidget(QSci):
@@ -103,13 +119,17 @@ class NemeTextWidget(QSci):
         self.mode = None
         self.setMode(EditorMode.Movement)
         self.prevWasEscapeFirst = False # used for kj escape secuence
+        self.replaceModeRepeat = 1 # used to store the number argument before a replace (r) command
+        self.lineFindChar = '' # used to store the char to find in a line (f or F commands)
+        self.lineFindCharDirection = Direction.Right
 
 
-    def _findWORDPosition(self, findRight=True):
+    def _findWORDPosition(self, direction):
         """
         Find next WORD. With findRight=True it will
         instead find the end of the previous WORD
         """
+        findRight       = (direction == Direction.Right)
         currentPos      = self.SendScintilla(QSci.SCI_GETCURRENTPOS)
         source          = bytearray(1)
         char            = -1
@@ -124,14 +144,15 @@ class NemeTextWidget(QSci):
 
             if not foundWhiteSpace:
                 foundWhiteSpace = char in WHITESPACE
-            currentPos += adder 
+            currentPos += adder
         return -1
 
 
-    def _findWORDExtremePosition(self, start = True):
+    def _findWORDExtremePosition(self, direction):
         """
         Find the start or end of the current WORD
         """
+        start = (direction == Direction.Left)
         source = bytearray(1)
         currentPos = self.SendScintilla(QSci.SCI_GETCURRENTPOS)
         char = -1
@@ -162,6 +183,74 @@ class NemeTextWidget(QSci):
         return haveToClearList
 
 
+    def _insertLine(self, direction):
+        adder = 1 if (direction == Direction.Below) else 0
+        line, index = self.getCursorPosition()
+        self.insertAt('\n', line+adder, 0)
+        self.setCursorPosition(line+adder, 0)
+
+
+    def _jumpToCharInLineFromPos(self, char, direction):
+        curLine, curIndex = self.getCursorPosition()
+        lineText = self.text(curLine)
+
+        if direction == Direction.Right:
+            charPos = lineText.find(char, curIndex+1)
+        else:
+            charPos = lineText.rfind(char, 0, curIndex-1)
+
+        if charPos != -1:
+            self.setCursorPosition(curLine, charPos)
+
+
+    def _deleteLines(self, direction):
+        multiplier = 1 if direction == Direction.Below else -1
+        numLines = self.getNumberPrefix(True)
+        curLine, _ = self.getCursorPosition()
+        self.setSelection(curLine, 0, curLine + (numLines * multiplier), 0)
+        self.cut()
+
+
+    def _deleteToEOL(self):
+        curLine, curIndex = self.getCursorPosition()
+        self.setSelection(curLine, curIndex, curLine, self.lineLength(curLine) - 1)
+        self.cut()
+
+
+    class SingleUndo:
+        def __init__(self, parent):
+            self.parent = parent
+        def __enter__(self):
+            self.parent.beginUndoAction()
+        def __exit__(self, type, value, traceback):
+            self.parent.endUndoAction()
+
+
+    class ReadWriteSingleUndo:
+        def __init__(self, parent):
+            self.parent = parent
+        def __enter__(self):
+            self.parent.beginUndoAction()
+            self.parent.setReadOnly(0)
+        def __exit__(self, type, value, traceback):
+            self.parent.endUndoAction()
+            self.parent.setReadOnly(1)
+
+
+
+    class ReadWrite:
+        def __init__(self, parent):
+            self.parent = parent
+        def __enter__(self):
+            self.parent.setReadOnly(0)
+        def __exit__(self, type, value, traceback):
+            self.parent.setReadOnly(1)
+
+
+    def hasNumberPrefix(self):
+        return bool(len(self.numberList))
+
+
     def getNumberPrefix(self, limitByMaxLines = False):
         if not self.numberList:
             number = 1
@@ -180,11 +269,38 @@ class NemeTextWidget(QSci):
             self.markerAdd(nline, self.ARROW_MARKER_NUM)
 
 
+    def setMode(self, newmode):
+        # TODO: Change cursor color on special modes?
+        if newmode == self.mode:
+            return
+
+        if newmode == EditorMode.Typing:
+            self.SendScintilla(QSci.SCI_SETCARETSTYLE, 1)
+            self.setReadOnly(0)
+        elif newmode == EditorMode.Movement:
+            self.SendScintilla(QSci.SCI_SETCARETSTYLE, 2)
+            self.setReadOnly(1)
+        elif newmode == EditorMode.Command:
+            self.setReadOnly(1)
+        elif newmode == EditorMode.ReplaceChar:
+            self.SendScintilla(QSci.SCI_SETCARETSTYLE, 1)
+            self.setReadOnly(1)
+        elif newmode == EditorMode.FindChar:
+            self.setReadOnly(1)
+
+        self.mode = newmode
+        print('NewMode: {}'.format(self.mode))
+
+
+    def processCommand(self):
+        # FIXME: implement
+        pass
+
+
     def keyPressEvent(self, e):
         process         = False
         clearnumberList = True
-
-        modifiers = QApplication.keyboardModifiers()
+        modifiers       = QApplication.keyboardModifiers()
 
         # =============================================================
         # Typing Mode
@@ -192,17 +308,15 @@ class NemeTextWidget(QSci):
 
         if self.mode == EditorMode.Typing:
 
-            if modifiers == Qt.NoModifier: # NO MODIFIER
+            if modifiers in [Qt.NoModifier, Qt.ShiftModifier]:
                 if e.key() == Qt.Key_Escape:
                     self.setMode(EditorMode.Movement)
-                elif e.key() == ESCAPEFIRST:
+                elif e.text() == ESCAPEFIRST:
                     self.prevWasEscapeFirst = True
                     process = True
 
-                elif e.key() == ESCAPESECOND:
-                    if self.prevWasEscapeFirst:
-                        # delete previous K and change to Movement
-                        # FIXME: delete previous k
+                elif e.text() == ESCAPESECOND:
+                    if self.prevWasEscapeFirst: # delete previous K and change to Movement
                         self.SendScintilla(QSci.SCI_DELETEBACK)
                         self.setMode(EditorMode.Movement)
                     else:
@@ -211,9 +325,6 @@ class NemeTextWidget(QSci):
                 else:
                     # just write
                     process = True
-
-            elif modifiers == Qt.ShiftModifier: # SHIFT
-                process = True
 
             elif modifiers == Qt.ControlModifier: # CONTROL
                 # Ctrl + IK is PageUP/Down too like in normal mode
@@ -239,19 +350,24 @@ class NemeTextWidget(QSci):
 
         elif self.mode == EditorMode.Movement:
 
-            if modifiers == Qt.NoModifier: # NO MODIFIER
+            if modifiers in [Qt.NoModifier, Qt.ShiftModifier]: # NO MODIFIER
                 if e.key() in NUMSETKEYS:
                     clearnumberList = self._processNumberPrefix(e.key())
                     if e.key() == Qt.Key_0 and clearnumberList:
                         # 0 with buffer empty = goto beginning of line
                         self.SendScintilla(QSci.SCI_HOME)
-                        
-                elif e.key() in {Qt.Key_T, Qt.Key_A}:
+
+                elif e.text() == 't': # enter typing mode
+                    self.setMode(EditorMode.Typing)
+
+                elif e.text() == 'a': # enter typing mode after the current char
                     self.SendScintilla(QSci.SCI_CHARRIGHT)
                     self.setMode(EditorMode.Typing)
+
                 elif e.key() == Qt.Key_Space:
                     self.setMode(EditorMode.Command)
-                elif e.key() == Qt.Key_I: # line up
+
+                elif e.text() == 'i': # line up
                     if modifiers == Qt.ControlModifier:
                         for _ in range(self.getNumberPrefix(True)):
                             self.SendScintilla(QSci.SCI_PAGEUP)
@@ -261,7 +377,7 @@ class NemeTextWidget(QSci):
                 elif e.key() == Qt.Key_Backspace: # n lines up
                     for _ in range(BACKSPACE_LINES * self.getNumberPrefix(True)):
                         self.SendScintilla(QSci.SCI_LINEUP, 5)
-                elif e.key() == Qt.Key_K: # line down
+                elif e.text() == 'k': # line down
                     if modifiers == Qt.ControlModifier:
                         for _ in range(self.getNumberPrefix(True)):
                             self.SendScintilla(QSci.SCI_PAGEDOWN)
@@ -269,107 +385,183 @@ class NemeTextWidget(QSci):
                         for _ in range(self.getNumberPrefix(True)):
                             self.SendScintilla(QSci.SCI_LINEDOWN)
                 elif e.key() == Qt.Key_Return: # n lines up
-                    # FIXME: MUST be a better way...
+                    # FIXME: Do the right way of goto_line (current - 5)
                     for _ in range(RETURN_LINES * self.getNumberPrefix(True)):
                         self.SendScintilla(QSci.SCI_LINEDOWN, 5)
-                elif e.key() == Qt.Key_J: # char left
+                elif e.text() == 'j': # char left
                     for _ in range(self.getNumberPrefix()):
                         self.SendScintilla(QSci.SCI_CHARLEFT)
-                elif e.key() == Qt.Key_L: # char right
+                elif e.text() == 'l': # char right
                     for _ in range(self.getNumberPrefix()):
                         self.SendScintilla(QSci.SCI_CHARRIGHT)
-                elif e.key() == Qt.Key_W: # next beginning of word
+                elif e.text() == 'w': # next beginning of word
                     for _ in range(self.getNumberPrefix()):
                         self.SendScintilla(QSci.SCI_WORDRIGHT)
-                elif e.key() == Qt.Key_B: # prev beginning of word
+                elif e.text() == 'b': # prev beginning of word
                     for _ in range(self.getNumberPrefix()):
                         self.SendScintilla(QSci.SCI_WORDLEFT)
-                elif e.key() == Qt.Key_E: # next end of word
+                elif e.text() == 'e': # next end of word
                     for _ in range(self.getNumberPrefix()):
+                        self.SendScintilla(QSci.SCI_CHARRIGHT)
                         self.SendScintilla(QSci.SCI_WORDRIGHTEND)
-                elif e.key() == Qt.Key_U: # undo
-                    self.setReadOnly(0)
-                    for _ in range(self.getNumberPrefix()):
-                        self.undo()
-                    self.setReadOnly(1)
-                elif e.key() == Qt.Key_S: # first non-blank in line
+                        self.SendScintilla(QSci.SCI_CHARLEFT)
+                elif e.text() == 'u': # undo
+                    with self.ReadWrite(self):
+                        for _ in range(self.getNumberPrefix()):
+                            self.undo()
+                elif e.text() == 's': # first non-blank in line
                     self.SendScintilla(QSci.SCI_VCHOME)
-                elif e.key() == Qt.Key_O: # insert empty line below current
-                    self.beginUndoAction()
-                    # FIXME: start at the right column after language indentation
-                    for _ in range(self.getNumberPrefix()):
-                        line, index = self.getCursorPosition()
-                        self.insertAt('\n', line+1, 0)
-                        self.setCursorPosition(line+1, 0)
-                    self.setMode(EditorMode.Typing)
-                    self.endUndoAction()
-                else:
-                    # probably single modifier
-                    clearnumberList = False
-
-            elif modifiers == Qt.ShiftModifier: # SHIFT
-                if e.key() == Qt.Key_Dollar: # end of line
-                    self.SendScintilla(QSci.SCI_LINEEND)
-                elif e.key() == Qt.Key_A: # append after EOL
-                    self.SendScintilla(QSci.SCI_LINEEND)
-                    self.setMode(EditorMode.Typing)
-                elif e.key() == Qt.Key_I: # insert at the start of the line
-                    self.SendScintilla(QSci.SCI_VCHOME)
-                    self.setMode(EditorMode.Typing)
-                elif e.key() == Qt.Key_O: # insert empty line above current
-                    # FIXME: start at the right column after language indentation
-                    self.beginUndoAction()
-                    for _ in range(self.getNumberPrefix()):
-                        line, index = self.getCursorPosition()
-                        self.insertAt('\n', line, 0)
-                        self.setCursorPosition(line, 0)
+                elif e.text() == 'o': # insert empty line below current
+                    with self.SingleUndo(self):
+                        # FIXME: start at the right column after language indentation
+                        for _ in range(self.getNumberPrefix()):
+                            self._insertLine(Direction.Below)
                         self.setMode(EditorMode.Typing)
-                    self.endUndoAction()
-                elif e.key() == Qt.Key_J: # join line with line below
+                elif e.text() == 'O': # insert empty line above current
+                    # FIXME: start at the right column after language indentation
+                    with self.SingleUndo(self):
+                        for _ in range(self.getNumberPrefix()):
+                            self._insertLine(Direction.Above)
+                        self.setMode(EditorMode.Typing)
+                elif e.text() == 'g': # goto line, only with numeric prefix
+                    if not self.hasNumberPrefix():
+                        # XXX start command line with 'g' command pre-written
+                        pass
+                    else:
+                        line = self.getNumberPrefix(True)
+                        self.SendScintilla(QSci.SCI_GOTOLINE, line-1)
+                elif e.text() == 'r':
+                    self.replaceModeRepeat = self.getNumberPrefix()
+                    self.setMode(EditorMode.ReplaceChar)
+                elif e.text() == '$': # end of line
+                    self.SendScintilla(QSci.SCI_LINEEND)
+                    self.SendScintilla(QSci.SCI_CHARLEFT)
+                elif e.text() == 'A': # append after EOL
+                    self.SendScintilla(QSci.SCI_LINEEND)
+                    self.setMode(EditorMode.Typing)
+                elif e.text() == 'I': # insert at the start of the line
+                    self.SendScintilla(QSci.SCI_VCHOME)
+                    self.setMode(EditorMode.Typing)
+                elif e.text() == 'J': # join line with line below
                     # FIXME: undoing this leaves the cursor at the end of the line
-                    self.beginUndoAction()
-                    for _ in range(self.getNumberPrefix(True)):
-                        line, index = self.getCursorPosition()
-                        nextLine    = self.text(line + 1).lstrip()
-                        if not nextLine:
-                            nextLine = '\n'
+                    with self.ReadWriteSingleUndo(self):
+                        for _ in range(self.getNumberPrefix(True)):
+                            line, index = self.getCursorPosition()
+                            nextLine    = self.text(line + 1).lstrip()
+                            if not nextLine:
+                                nextLine = '\n'
 
-                        self.setReadOnly(0)
-                        self.insertAt(' ' + nextLine, line, self.lineLength(line)-1)
-                        self.SendScintilla(QSci.SCI_LINEDOWN)
-                        self.SendScintilla(QSci.SCI_LINEDELETE)
-                        self.SendScintilla(QSci.SCI_LINEDELETE)
-                        self.SendScintilla(QSci.SCI_LINEUP)
-                        self.setReadOnly(1)
-                    self.endUndoAction()
-                elif e.key() == Qt.Key_W: # next WORD
+                            self.insertAt(' ' + nextLine, line, self.lineLength(line)-1)
+                            self.SendScintilla(QSci.SCI_LINEDOWN)
+                            self.SendScintilla(QSci.SCI_LINEDELETE)
+                            self.SendScintilla(QSci.SCI_LINEDELETE)
+                            self.SendScintilla(QSci.SCI_LINEUP)
+                elif e.text() == 'W': # next WORD
                     for _ in range(self.getNumberPrefix()):
-                        nextWordPos = self._findWORDPosition()
+                        nextWordPos = self._findWORDPosition(Direction.Right)
                         if nextWordPos != -1:
                             self.SendScintilla(QSci.SCI_GOTOPOS, nextWordPos)
-                elif e.key() == Qt.Key_E: # prev WORD end
+                elif e.text() == 'E': # next WORD end
                     for _ in range(self.getNumberPrefix()):
-                        prevWordEndPos = self._findWORDPosition(findRight=False)
+                        nextWordEndPos = self._findWORDPosition(Direction.Right)
+                        if nextWordEndPos != -1:
+                            self.SendScintilla(QSci.SCI_GOTOPOS, nextWordEndPos)
+                            wordEnd = self._findWORDExtremePosition(Direction.Right)
+                            self.SendScintilla(QSci.SCI_GOTOPOS, wordEnd)
+                elif e.text() == 'B': # prev WORD start
+                    for _ in range(self.getNumberPrefix()):
+                        prevWordEndPos = self._findWORDPosition(Direction.Left)
                         if prevWordEndPos != -1:
                             self.SendScintilla(QSci.SCI_GOTOPOS, prevWordEndPos)
-                elif e.key() == Qt.Key_B: # prev WORD start
-                    for _ in range(self.getNumberPrefix()):
-                        prevWordEndPos = self._findWORDPosition(findRight=False)
-                        if prevWordEndPos != -1:
-                            self.SendScintilla(QSci.SCI_GOTOPOS, prevWordEndPos)
-                            wordStart = self._findWORDExtremePosition(start = True)
+                            wordStart = self._findWORDExtremePosition(Direction.Left)
                             self.SendScintilla(QSci.SCI_GOTOPOS, wordStart)
-
+                elif e.text() == 'G': # go to the last line
+                    self.SendScintilla(QSci.SCI_GOTOLINE, self.lines())
+                elif e.text() == 'x': # delete char at the cursor (like the del key)
+                    with self.ReadWriteSingleUndo(self):
+                        num = self.getNumberPrefix()
+                        curLine, curIndex = self.getCursorPosition()
+                        self.setSelection(curLine, curIndex, curLine, curIndex+num)
+                        self.cut()
+                elif e.text() == 'X': # delete char before the cursor (like the backspace key)
+                    with self.ReadWriteSingleUndo(self):
+                        for _ in range(self.getNumberPrefix()):
+                            self.SendScintilla(QSci.SCI_DELETEBACK)
+                elif e.text() == '>': # indent
+                    with self.ReadWriteSingleUndo(self):
+                        curLine, _ = self.getCursorPosition()
+                        for _ in range(self.getNumberPrefix()):
+                            self.indent(curLine)
+                            curLine += 1
+                elif e.text() == '<': # unindent
+                    with self.ReadWriteSingleUndo(self):
+                        curLine, _ = self.getCursorPosition()
+                        for _ in range(self.getNumberPrefix()):
+                            self.unindent(curLine)
+                            curLine += 1
+                elif e.text() == 'p': # paste at cursor position
+                    with self.ReadWriteSingleUndo(self):
+                        for _ in range(self.getNumberPrefix()):
+                            self.paste()
+                elif e.text() == 'P': # paste on a new line below cursor position
+                    with self.ReadWriteSingleUndo(self):
+                        for _ in range(self.getNumberPrefix()):
+                            self._insertLine(Direction.Below)
+                            self.paste()
+                elif e.text() == 'f': # find char in line front
+                    self.lineFindCharDirection = Direction.Right
+                    self.setMode(EditorMode.FindChar)
+                elif e.text() == 'F': # find char in line back
+                    self.lineFindCharDirection = Direction.Left
+                    self.setMode(EditorMode.FindChar)
+                elif e.text() == ';': # repeat search of char in line
+                    self._jumpToCharInLineFromPos(self.lineFindChar,
+                                                  self.lineFindCharDirection)
+                elif e.text() == ',': # repeat search of char in line in reverse direction
+                    if self.lineFindCharDirection == Direction.Left:
+                        revDirection = Direction.Right
+                    else:
+                        revDirection = Direction.Left
+                    self._jumpToCharInLineFromPos(self.lineFindChar, revDirection)
+                elif e.text() == 'd': # delete
+                    if not self.hasNumberPrefix():
+                        # XXX start command line with 'd' pre-written
+                        pass
+                    else:
+                        with self.ReadWrite(self):
+                            self._deleteLines(Direction.Below)
+                elif e.text() == 'D': # delete from cursor to EOL
+                    with self.ReadWrite(self):
+                        self._deleteToEOL()
+                elif e.text() == 'c': # delete and change to typing mode
+                    if not self.hasNumberPrefix():
+                        # XXX start command line with 'c' pre-written
+                         pass
+                    else:
+                        with self.ReadWrite(self):
+                            self._deleteLines(Direction.Below)
+                            self.setMode(EditorMode.Typing)
+                elif e.text() == 'C': # delete from cursor to EOL and change to typing mode
+                    with self.ReadWrite(self):
+                        self._deleteToEOL()
+                        self.setMode(EditorMode.Typing)
+                else:
+                    # probably single shift modifier
+                    clearnumberList = False
 
             elif modifiers == Qt.AltModifier: # ALT
                 if e.key() == Qt.Key_E: # prev end of word
                     for _ in range(self.getNumberPrefix()):
                         self.SendScintilla(QSci.SCI_WORDLEFTEND)
-                elif e.key() == Qt.Key_U: # redo
-                    self.setReadOnly(0)
+                        self.SendScintilla(QSci.SCI_CHARLEFT)
+                elif e.key() == Qt.Key_B: # prev end of WORD
                     for _ in range(self.getNumberPrefix()):
-                        self.redo()
-                    self.setReadOnly(1)
+                        prevWordEndPos = self._findWORDPosition(Direction.Left)
+                        self.SendScintilla(QSci.SCI_GOTOPOS, prevWordEndPos)
+                elif e.key() == Qt.Key_U: # redo
+                    with self.ReadWrite(self):
+                        for _ in range(self.getNumberPrefix()):
+                            self.redo()
 
             elif modifiers == Qt.ControlModifier:# CONTROL
                 if e.key() == Qt.Key_I: # page up
@@ -392,40 +584,56 @@ class NemeTextWidget(QSci):
                 self.processCommand()
                 self.setMode(EditorMode.Movement)
 
-        if self.prevWasEscapeFirst and e.key() != ESCAPEFIRST:
+        # ==============================================================
+        # ReplaceChar Mode
+        # ==============================================================
+
+        elif self.mode == EditorMode.ReplaceChar:
+            if e.key() == Qt.Key_Escape:
+                self.setMode(EditorMode.Movement)
+            elif not e.text():
+                pass
+            else:
+                with self.ReadWriteSingleUndo(self):
+                    for _ in range(self.replaceModeRepeat):
+                        curLine, curIndex = self.getCursorPosition()
+                        self.setSelection(curLine, curIndex, curLine, curIndex+1)
+                        self.SendScintilla(QSci.SCI_CLEAR)
+                        self.insertAt(e.text(), curLine, curIndex)
+
+                        if self.replaceModeRepeat > 1:
+                            self.setCursorPosition(curLine, curIndex+1)
+
+                self.replaceModeRepeat = 1
+                self.setMode(EditorMode.Movement)
+
+        # ==============================================================
+        # Find Char Front Mode
+        # ==============================================================
+
+        elif self.mode == EditorMode.FindChar:
+            if e.key() == Qt.Key_Escape:
+                self.setMode(EditorMode.Movement)
+            elif not e.text():
+                pass
+            else:
+                self.lineFindChar = e.text()
+                self._jumpToCharInLineFromPos(self.lineFindChar,
+                                              self.lineFindCharDirection)
+                self.setMode(EditorMode.Movement)
+
+
+        if self.prevWasEscapeFirst and e.text() != ESCAPEFIRST:
+            # clear the escape chord if the second char doesnt follows the first
             self.prevWasEscapeFirst = False
 
         if clearnumberList:
+            # clearnumberList is set to false when the char is a number
             self.numberList.clear()
 
         if process:
             super().keyPressEvent(e)
 
-
-    def setMode(self, newmode):
-        if newmode == self.mode:
-            return
-
-        if newmode == EditorMode.Typing:
-            self.SendScintilla(QSci.SCI_SETCARETSTYLE, 1)
-            self.setReadOnly(0)
-
-        elif newmode == EditorMode.Movement:
-            self.SendScintilla(QSci.SCI_SETCARETSTYLE, 2)
-            self.setReadOnly(0)
-            self.setReadOnly(1)
-
-        elif newmode == EditorMode.Command:
-            pass
-            self.setReadOnly(1)
-
-        self.mode = newmode
-        print('NewMode: {}'.format(self.mode))
-
-
-    def processCommand(self):
-        # FIXME: implement
-        pass
 
 
 class Neme(QMainWindow):
