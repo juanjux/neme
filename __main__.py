@@ -16,7 +16,7 @@ Objectives of this project:
     - avoid symbols that usually need shift in non-us keyboards (like '/' to search
       or ':' to enter commands).
     - but have the alt/options key as an option for shortcuts too
-    - use the function keys
+    - use the function keys too
 """
 
 import sys, os, enum
