@@ -21,6 +21,9 @@ Objectives of this project:
 
 """
 BUGS:
+    - By Line selection doesnt seem to work (it does the same as by stream). I could workaround
+      it or wait for an upstream fix or patch scintilla myself
+    - Undo should restore the cursor at the line it was before the action that is being undo-ed
 """
 
 import sys, os, enum
@@ -35,7 +38,7 @@ import sys, os, enum
 # FIXME: remove these *'s
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui     import *
-from PyQt5.QtCore    import Qt
+from PyQt5.QtCore    import Qt, QEvent, QCoreApplication
 from PyQt5.Qsci      import QsciScintilla as QSci, QsciLexerPython
 
 # FIXME: make these configurable
@@ -62,6 +65,13 @@ class Direction(enum.Enum):
     Right = 2
     Above = 3
     Below = 4
+
+
+class SelectionMode(enum.IntEnum):
+    Disabled    = 1
+    Character   = 2
+    Line        = 3
+    Rectangular = 4
 
 
 class NemeTextWidget(QSci):
@@ -122,6 +132,7 @@ class NemeTextWidget(QSci):
         self.replaceModeRepeat = 1 # used to store the number argument before a replace (r) command
         self.lineFindChar = '' # used to store the char to find in a line (f or F commands)
         self.lineFindCharDirection = Direction.Right
+        self.selectionMode = SelectionMode.Disabled
 
 
     def _findWORDPosition(self, direction):
@@ -214,6 +225,14 @@ class NemeTextWidget(QSci):
         curLine, curIndex = self.getCursorPosition()
         self.setSelection(curLine, curIndex, curLine, self.lineLength(curLine) - 1)
 
+
+    def _disableSelection(self):
+        selStart = self.SendScintilla(QSci.SCI_GETSELECTIONSTART)
+        self.SendScintilla(QSci.SCI_CLEARSELECTIONS)
+        self.SendScintilla(QSci.SCI_GOTOPOS, selStart)
+        self.selectionMode = SelectionMode.Disabled
+
+
     def _deleteLines(self, direction):
         self._selectLines(direction)
         self.cut()
@@ -231,12 +250,15 @@ class NemeTextWidget(QSci):
         self.SendScintilla(QSci.SCI_GOTOPOS, currentPos)
 
 
-
-    def _yankToEOL(self):
+    def _yankToEOL(self, fromLineStart = False):
         currentPos = self.SendScintilla(QSci.SCI_GETCURRENTPOS)
+        if fromLineStart:
+            self.SendScintilla(QSci.SCI_HOME)
+
         self._selectToEOL()
         self.copy()
         self.SendScintilla(QSci.SCI_GOTOPOS, currentPos)
+
 
     class SingleUndo:
         def __init__(self, parent):
@@ -319,7 +341,7 @@ class NemeTextWidget(QSci):
 
 
     def keyPressEvent(self, e):
-        process         = False
+        process         = False # set to true to process the key at the end
         clearnumberList = True
         modifiers       = QApplication.keyboardModifiers()
 
@@ -372,7 +394,7 @@ class NemeTextWidget(QSci):
             if modifiers in [Qt.NoModifier, Qt.ShiftModifier]: # NO MODIFIER
                 if e.key() in NUMSETKEYS:
                     clearnumberList = self._processNumberPrefix(e.key())
-                    if e.key() == Qt.Key_0 and clearnumberList:
+                    if e.text() == '0' and clearnumberList:
                         # 0 with buffer empty = goto beginning of line
                         self.SendScintilla(QSci.SCI_HOME)
 
@@ -564,14 +586,34 @@ class NemeTextWidget(QSci):
                     with self.ReadWrite(self):
                         self._deleteToEOL()
                         self.setMode(EditorMode.Typing)
-                elif e.text() == 'y': # yank [count] lines or selection
-                    if not self.hasNumberPrefix():
-                        # XXX start command line with 'y' pre-written
-                        pass
-                    else:
+                elif e.text() in ['y', 'Y']:
+                    if self.selectionMode != SelectionMode.Disabled:
+                        # with selection, both copy the selection
+                        self.copy()
+                        self._disableSelection()
+                    elif e.text() == 'y':
+                        # yank [prefix] lines or start yank command
+                        if self.hasNumberPrefix():
+                            self._yankLines(Direction.Below)
+                        else:
+                            # XXX start command line with 'y' pre-written
+                            pass
+                    elif e.text() == 'Y':
+                        # yank the current line
                         self._yankLines(Direction.Below)
-                elif e.text() == 'Y': # yank from cursor until EOL
-                    self._yankToEOL()
+                        #self._yankToEOL(fromLineStart = True)
+                elif e.text() == 'v':
+                    if self.selectionMode != SelectionMode.Disabled:
+                        self._disableSelection()
+                    else:
+                        self.selectionMode = SelectionMode.Character
+                        self.SendScintilla(QSci.SCI_SETSELECTIONMODE, QSci.SC_SEL_STREAM)
+                elif e.text() == 'V':
+                    if self.selectionMode != SelectionMode.Disabled:
+                        self._disableSelection()
+                    else:
+                        self.selectionMode = SelectionMode.Line
+                        self.SendScintilla(QSci.SCI_SETSELECTIONMODE, QSci.SC_SEL_LINES)
                 else:
                     # probably single modifier key pressed
                     clearnumberList = False
@@ -597,6 +639,25 @@ class NemeTextWidget(QSci):
                 elif e.key() == Qt.Key_K: # page down
                     for _ in range(self.getNumberPrefix(True)):
                         self.SendScintilla(QSci.SCI_PAGEDOWN)
+                elif e.key() == Qt.Key_C: 
+                    # with selection, copy selection
+                    # without selection but with prefix, yank [prefix] lines, like 'y'
+                    # without selection or prefix, copy the full line, like 'Y'
+                    if self.selectionMode != SelectionMode.Disabled:
+                        self.copy()
+                        self._disableSelection()
+                    else:
+                        self._yankToEOL(fromLineStart = True)
+                elif e.key() == Qt.Key_V:
+                    # without selection, paste, with selection, change to rectagular mode
+                    if self.selectionMode != SelectionMode.Disabled:
+                        self.selectionMode = SelectionMode.Rectangular
+                        self.SendScintilla(QSci.SCI_SETSELECTIONMODE, QSci.SC_SEL_RECTANGLE)
+                    else:
+                        with self.ReadWriteSingleUndo(self):
+                            for _ in range(self.getNumberPrefix()):
+                                self.paste()
+
 
         # ==============================================================
         # Command Mode
@@ -656,6 +717,7 @@ class NemeTextWidget(QSci):
         if clearnumberList:
             # clearnumberList is set to false when the char is a number
             self.numberList.clear()
+
 
         if process:
             super().keyPressEvent(e)
