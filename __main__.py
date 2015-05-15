@@ -203,19 +203,40 @@ class NemeTextWidget(QSci):
             self.setCursorPosition(curLine, charPos)
 
 
-    def _deleteLines(self, direction):
+    def _selectLines(self, direction):
         multiplier = 1 if direction == Direction.Below else -1
         numLines = self.getNumberPrefix(True)
         curLine, _ = self.getCursorPosition()
         self.setSelection(curLine, 0, curLine + (numLines * multiplier), 0)
+
+
+    def _selectToEOL(self):
+        curLine, curIndex = self.getCursorPosition()
+        self.setSelection(curLine, curIndex, curLine, self.lineLength(curLine) - 1)
+
+    def _deleteLines(self, direction):
+        self._selectLines(direction)
         self.cut()
 
 
     def _deleteToEOL(self):
-        curLine, curIndex = self.getCursorPosition()
-        self.setSelection(curLine, curIndex, curLine, self.lineLength(curLine) - 1)
+        self._selectToEOL()
         self.cut()
 
+
+    def _yankLines(self, direction):
+        currentPos = self.SendScintilla(QSci.SCI_GETCURRENTPOS)
+        self._selectLines(direction)
+        self.copy()
+        self.SendScintilla(QSci.SCI_GOTOPOS, currentPos)
+
+
+
+    def _yankToEOL(self):
+        currentPos = self.SendScintilla(QSci.SCI_GETCURRENTPOS)
+        self._selectToEOL()
+        self.copy()
+        self.SendScintilla(QSci.SCI_GOTOPOS, currentPos)
 
     class SingleUndo:
         def __init__(self, parent):
@@ -307,7 +328,6 @@ class NemeTextWidget(QSci):
         # =============================================================
 
         if self.mode == EditorMode.Typing:
-
             if modifiers in [Qt.NoModifier, Qt.ShiftModifier]:
                 if e.key() == Qt.Key_Escape:
                     self.setMode(EditorMode.Movement)
@@ -349,7 +369,6 @@ class NemeTextWidget(QSci):
         # =============================================================
 
         elif self.mode == EditorMode.Movement:
-
             if modifiers in [Qt.NoModifier, Qt.ShiftModifier]: # NO MODIFIER
                 if e.key() in NUMSETKEYS:
                     clearnumberList = self._processNumberPrefix(e.key())
@@ -545,8 +564,16 @@ class NemeTextWidget(QSci):
                     with self.ReadWrite(self):
                         self._deleteToEOL()
                         self.setMode(EditorMode.Typing)
+                elif e.text() == 'y': # yank [count] lines or selection
+                    if not self.hasNumberPrefix():
+                        # XXX start command line with 'y' pre-written
+                        pass
+                    else:
+                        self._yankLines(Direction.Below)
+                elif e.text() == 'Y': # yank from cursor until EOL
+                    self._yankToEOL()
                 else:
-                    # probably single shift modifier
+                    # probably single modifier key pressed
                     clearnumberList = False
 
             elif modifiers == Qt.AltModifier: # ALT
@@ -576,7 +603,6 @@ class NemeTextWidget(QSci):
         # ==============================================================
 
         elif self.mode == EditorMode.Command:
-
             if e.key() == Qt.Key_Escape:
                 self.setMode(EditorMode.Movement)
 
