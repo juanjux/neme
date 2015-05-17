@@ -137,12 +137,11 @@ class NemeTextWidget(QSci):
 
     def _findWORDPosition(self, direction):
         """
-        Find next WORD. With findRight=True it will
+        Find next WORD start. With findRight=True it will
         instead find the end of the previous WORD
         """
         findRight       = (direction == Direction.Right)
         currentPos      = self.SendScintilla(QSci.SCI_GETCURRENTPOS)
-        source          = bytearray(1)
         char            = -1
         foundWhiteSpace = False
         adder = 1 if findRight else -1
@@ -159,22 +158,56 @@ class NemeTextWidget(QSci):
         return -1
 
 
-    def _findWORDExtremePosition(self, direction):
+    def _findWordStart(self, WORD=False):
         """
-        Find the start or end of the current WORD
+        Find the start of the current word or WORD
         """
-        start = (direction == Direction.Left)
-        source = bytearray(1)
         currentPos = self.SendScintilla(QSci.SCI_GETCURRENTPOS)
-        char = -1
-        adder = -1 if start else 1
-
-        while char != 0:
+        while True:
             char = self.SendScintilla(QSci.SCI_GETCHARAT, currentPos)
-            if char in WHITESPACE:
-                return currentPos - adder
-            currentPos += adder
-        return -1
+            if currentPos <= 0:
+                return 0
+            elif char in WHITESPACE or (not WORD and not self.isWordCharacter(chr(char))):
+                return currentPos + 1
+            currentPos -= 1
+        assert False
+
+
+    def _findWordEnd(self, WORD=False):
+        """
+        Find the end of the current word or WORD
+        """
+
+        currentPos = self.SendScintilla(QSci.SCI_GETCURRENTPOS)
+        lastPos = len(self.text())
+        while True:
+            char = self.SendScintilla(QSci.SCI_GETCHARAT, currentPos)
+            if currentPos >= lastPos:
+                return lastPos
+            elif char in WHITESPACE or (not WORD and not self.isWordCharacter(chr(char))):
+                return currentPos - 1
+            currentPos += 1
+        assert False
+
+
+    def _getWordUnderCursor(self, WORD=False):
+        """
+        Return a tuple (startPos, endPos, text) if the cursor is not
+        """
+        wordStart = self._findWordStart(WORD)
+        wordEnd   = self._findWordEnd(WORD)
+        lastPos = len(self.text())
+        print('XXX wordStart, wordEnd, lastPos: ', wordStart, wordEnd, lastPos)
+
+        if wordStart > wordEnd or (wordStart == lastPos): # no word found or at the end
+            return (-1, -1, '')
+
+        if wordEnd == lastPos:
+            wordEnd -= 1
+
+        wordByteArray = bytearray(wordEnd - wordStart + 1)
+        self.SendScintilla(QSci.SCI_GETTEXTRANGE, wordStart, wordEnd + 1, wordByteArray)
+        return (wordStart, wordEnd, wordByteArray.decode('utf-8'))
 
 
     def _processNumberPrefix(self, key):
@@ -507,14 +540,14 @@ class NemeTextWidget(QSci):
                         nextWordEndPos = self._findWORDPosition(Direction.Right)
                         if nextWordEndPos != -1:
                             self.SendScintilla(QSci.SCI_GOTOPOS, nextWordEndPos)
-                            wordEnd = self._findWORDExtremePosition(Direction.Right)
+                            wordEnd = self._findWordEnd(WORD=True)
                             self.SendScintilla(QSci.SCI_GOTOPOS, wordEnd)
                 elif e.text() == 'B': # prev WORD start
                     for _ in range(self.getNumberPrefix()):
                         prevWordEndPos = self._findWORDPosition(Direction.Left)
                         if prevWordEndPos != -1:
                             self.SendScintilla(QSci.SCI_GOTOPOS, prevWordEndPos)
-                            wordStart = self._findWORDExtremePosition(Direction.Left)
+                            wordStart = self._findWordStart(WORD=True)
                             self.SendScintilla(QSci.SCI_GOTOPOS, wordStart)
                 elif e.text() == 'G': # go to the last line
                     self.SendScintilla(QSci.SCI_GOTOLINE, self.lines())
@@ -602,18 +635,32 @@ class NemeTextWidget(QSci):
                         # yank the current line
                         self._yankLines(Direction.Below)
                         #self._yankToEOL(fromLineStart = True)
-                elif e.text() == 'v':
+                elif e.text() == 'v': # XXX rething 'v' for selection mode or call it visual
                     if self.selectionMode != SelectionMode.Disabled:
                         self._disableSelection()
                     else:
                         self.selectionMode = SelectionMode.Character
                         self.SendScintilla(QSci.SCI_SETSELECTIONMODE, QSci.SC_SEL_STREAM)
-                elif e.text() == 'V':
+                elif e.text() == 'V': # select by line (FIXME: doesnt work)
                     if self.selectionMode != SelectionMode.Disabled:
                         self._disableSelection()
                     else:
                         self.selectionMode = SelectionMode.Line
                         self.SendScintilla(QSci.SCI_SETSELECTIONMODE, QSci.SC_SEL_LINES)
+                elif e.text() == '*': # find forward word under cursor
+                    # XXX FIXME si esta en el primer caracter el primer resultado es la propia palabra
+                    # XXX FIXME selecciona textualmente
+                    # XXX FIXME se va al caracter despues del ultimo en el match asi que no se puede
+                    # repetir facilmente pulsando otra vez; deberia ir al primero
+                    start, end, word = self._getWordUnderCursor()
+                    if len(word):
+                        self.findFirst(word, False, # no regexp
+                                       False,       # no case sensitive
+                                       True,        # match whole word only
+                                       True,        # wrap at the end of text
+                                       show=True)   # unfold if match
+
+
                 else:
                     # probably single modifier key pressed
                     clearnumberList = False
@@ -639,7 +686,7 @@ class NemeTextWidget(QSci):
                 elif e.key() == Qt.Key_K: # page down
                     for _ in range(self.getNumberPrefix(True)):
                         self.SendScintilla(QSci.SCI_PAGEDOWN)
-                elif e.key() == Qt.Key_C: 
+                elif e.key() == Qt.Key_C:
                     # with selection, copy selection
                     # without selection but with prefix, yank [prefix] lines, like 'y'
                     # without selection or prefix, copy the full line, like 'Y'
