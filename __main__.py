@@ -449,7 +449,6 @@ class NemeTextWidget(QSci):
         # =============================================================
         # Typing Mode
         # =============================================================
-
         if self.mode == EditorMode.Typing:
             if modifiers in [Qt.NoModifier, Qt.ShiftModifier]:
                 if e.key() == Qt.Key_Escape:
@@ -490,7 +489,6 @@ class NemeTextWidget(QSci):
         # =============================================================
         # Movement Mode
         # =============================================================
-
         elif self.mode == EditorMode.Movement:
             if modifiers in [Qt.NoModifier, Qt.ShiftModifier]: # NO MODIFIER
                 if e.key() in NUMSETKEYS:
@@ -777,7 +775,6 @@ class NemeTextWidget(QSci):
         # ==============================================================
         # Command Mode
         # ==============================================================
-
         elif self.mode == EditorMode.Command:
             if e.key() == Qt.Key_Escape:
                 self.setMode(EditorMode.Movement)
@@ -789,7 +786,6 @@ class NemeTextWidget(QSci):
         # ==============================================================
         # ReplaceChar Mode
         # ==============================================================
-
         elif self.mode == EditorMode.ReplaceChar:
             if e.key() == Qt.Key_Escape:
                 self.setMode(EditorMode.Movement)
@@ -812,7 +808,6 @@ class NemeTextWidget(QSci):
         # ==============================================================
         # Find Char Front Mode
         # ==============================================================
-
         elif self.mode == EditorMode.FindChar:
             if e.key() == Qt.Key_Escape:
                 self.setMode(EditorMode.Movement)
@@ -824,7 +819,6 @@ class NemeTextWidget(QSci):
                                               self.lineFindCharDirection)
                 self.setMode(EditorMode.Movement)
 
-
         if self.prevWasEscapeFirst and e.text() != ESCAPEFIRST:
             # clear the escape chord if the second char doesnt follows the first
             self.prevWasEscapeFirst = False
@@ -833,10 +827,8 @@ class NemeTextWidget(QSci):
             # clearnumberList is set to false when the char is a number
             self.numberList.clear()
 
-
         if process:
             super().keyPressEvent(e)
-
 
 
 class Neme(QMainWindow):
