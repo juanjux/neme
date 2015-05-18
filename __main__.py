@@ -126,13 +126,20 @@ class NemeTextWidget(QSci):
         #not too small
         self.setMinimumSize(600, 450)
 
+        # Editor State Vars ====================================
         self.mode = None
         self.setMode(EditorMode.Movement)
-        self.prevWasEscapeFirst = False # used for kj escape secuence
-        self.replaceModeRepeat = 1 # used to store the number argument before a replace (r) command
-        self.lineFindChar = '' # used to store the char to find in a line (f or F commands)
+        # used for kj escape secuence
+        self.prevWasEscapeFirst = False
+        # used to store the number argument before a replace (r) command
+        self.replaceModeRepeat = 1
+        # used to store the char to find in a line (f or F commands)
+        self.lineFindChar = ''
         self.lineFindCharDirection = Direction.Right
         self.selectionMode = SelectionMode.Disabled
+        self.lastSearchText = ''
+        self.lastSearchDirection = Direction.Below
+        self.lastSearchFlags = 0
 
 
     def _findWORDPosition(self, direction):
@@ -197,7 +204,6 @@ class NemeTextWidget(QSci):
         wordStart = self._findWordStart(WORD)
         wordEnd   = self._findWordEnd(WORD)
         lastPos = len(self.text())
-        print('XXX wordStart, wordEnd, lastPos: ', wordStart, wordEnd, lastPos)
 
         if wordStart > wordEnd or (wordStart == lastPos): # no word found or at the end
             return (-1, -1, '')
@@ -208,6 +214,68 @@ class NemeTextWidget(QSci):
         wordByteArray = bytearray(wordEnd - wordStart + 1)
         self.SendScintilla(QSci.SCI_GETTEXTRANGE, wordStart, wordEnd + 1, wordByteArray)
         return (wordStart, wordEnd, wordByteArray.decode('utf-8'))
+
+
+    def _findText(self, text, startPos, endPos, searchFlags):
+        if not len(text):
+            return -1
+
+        self.SendScintilla(QSci.SCI_SETSEARCHFLAGS, searchFlags)
+        self.SendScintilla(QSci.SCI_SETTARGETSTART, startPos)
+        self.SendScintilla(QSci.SCI_SETTARGETEND, endPos)
+        bytesText = text.encode('utf-8')
+        return self.SendScintilla(QSci.SCI_SEARCHINTARGET, len(bytesText), bytesText)
+
+
+    def _findWordUnderCursor(self, direction=Direction.Below):
+        wordStart, wordEnd, word = self._getWordUnderCursor()
+        if len(word):
+            self.lastSearchText = word
+            textLength = len(self.text())
+            self.lastSearchFlags = QSci.SCFIND_WHOLEWORD
+            self.SendScintilla(QSci.SCI_SETSEARCHFLAGS, self.lastSearchFlags)
+            if direction == Direction.Below:
+                startPos = wordEnd
+                endPos = textLength
+                wrapStartPos = 0
+                wrapEndPos = wordStart
+            else:
+                startPos = wordStart
+                endPos = 0
+                wrapStartPos = textLength
+                wrapEndPos = wordEnd
+            matchPosition = self._findText(word, startPos, endPos, self.lastSearchFlags)
+
+            if matchPosition == -1:
+                matchPosition = self._findText(word, wrapStartPos,
+                                               wrapEndPos, self.lastSearchFlags)
+
+            if matchPosition != -1:
+                self.SendScintilla(QSci.SCI_GOTOPOS, matchPosition)
+
+
+    def _repeatLastSearch(self, direction):
+        currentPos = self.SendScintilla(QSci.SCI_GETCURRENTPOS)
+        textLength = len(self.text())
+
+        if direction == Direction.Below:
+            startPos = currentPos + 1
+            endPos = textLength
+            wrapStartPos = 0
+            wrapEndPos = startPos
+        else:
+            startPos = currentPos - 1
+            endPos = 0
+            wrapStartPos = textLength
+            wrapEndPos = startPos
+        pos = self._findText(self.lastSearchText, startPos,
+                             endPos, self.lastSearchFlags)
+
+        if pos == -1:
+            pos = self._findText(self.lastSearchText, wrapStartPos,
+                                 wrapEndPos, self.lastSearchFlags)
+        if pos != -1:
+            self.SendScintilla(QSci.SCI_GOTOPOS, pos)
 
 
     def _processNumberPrefix(self, key):
@@ -499,7 +567,7 @@ class NemeTextWidget(QSci):
                         self.setMode(EditorMode.Typing)
                 elif e.text() == 'g': # goto line, only with numeric prefix
                     if not self.hasNumberPrefix():
-                        # XXX start command line with 'g' command pre-written
+                        # FIXME start command line with 'g' command pre-written
                         pass
                     else:
                         line = self.getNumberPrefix(True)
@@ -599,7 +667,7 @@ class NemeTextWidget(QSci):
                     self._jumpToCharInLineFromPos(self.lineFindChar, revDirection)
                 elif e.text() == 'd': # delete
                     if not self.hasNumberPrefix():
-                        # XXX start command line with 'd' pre-written
+                        # FIXME start command line with 'd' pre-written
                         pass
                     else:
                         with self.ReadWrite(self):
@@ -609,7 +677,7 @@ class NemeTextWidget(QSci):
                         self._deleteToEOL()
                 elif e.text() == 'c': # delete and change to typing mode
                     if not self.hasNumberPrefix():
-                        # XXX start command line with 'c' pre-written
+                        # FIXME start command line with 'c' pre-written
                          pass
                     else:
                         with self.ReadWrite(self):
@@ -629,13 +697,13 @@ class NemeTextWidget(QSci):
                         if self.hasNumberPrefix():
                             self._yankLines(Direction.Below)
                         else:
-                            # XXX start command line with 'y' pre-written
+                            # FIXME start command line with 'y' pre-written
                             pass
                     elif e.text() == 'Y':
                         # yank the current line
                         self._yankLines(Direction.Below)
                         #self._yankToEOL(fromLineStart = True)
-                elif e.text() == 'v': # XXX rething 'v' for selection mode or call it visual
+                elif e.text() == 'v': # FIXME rethink 'v' for selection mode or call it visual
                     if self.selectionMode != SelectionMode.Disabled:
                         self._disableSelection()
                     else:
@@ -648,19 +716,19 @@ class NemeTextWidget(QSci):
                         self.selectionMode = SelectionMode.Line
                         self.SendScintilla(QSci.SCI_SETSELECTIONMODE, QSci.SC_SEL_LINES)
                 elif e.text() == '*': # find forward word under cursor
-                    # XXX FIXME si esta en el primer caracter el primer resultado es la propia palabra
-                    # XXX FIXME selecciona textualmente
-                    # XXX FIXME se va al caracter despues del ultimo en el match asi que no se puede
-                    # repetir facilmente pulsando otra vez; deberia ir al primero
-                    start, end, word = self._getWordUnderCursor()
-                    if len(word):
-                        self.findFirst(word, False, # no regexp
-                                       False,       # no case sensitive
-                                       True,        # match whole word only
-                                       True,        # wrap at the end of text
-                                       show=True)   # unfold if match
-
-
+                    self._findWordUnderCursor()
+                    self.lastSearchDirection = Direction.Below
+                elif e.text() == '#': # find backward word under cursor
+                    self._findWordUnderCursor(direction = Direction.Above)
+                    self.lastSearchDirection = Direction.Above
+                elif e.text() == 'n': # repeat last search in the same direction
+                    self._repeatLastSearch(self.lastSearchDirection)
+                elif e.text() == 'N': # repeat last search in reverse direction
+                    if self.lastSearchDirection == Direction.Below:
+                        direction = Direction.Above
+                    else:
+                        direction = Direction.Below
+                    self._repeatLastSearch(direction)
                 else:
                     # probably single modifier key pressed
                     clearnumberList = False
