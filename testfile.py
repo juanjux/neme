@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Neme: a NEw Modal Editor prototype
+Neme Editor: a NEw Modal Editor prototype
 
 author: Juanjo Álvarez
 
@@ -78,7 +78,6 @@ class NemeTextWidget(QSci):
 
     # Signals
     fileChanged = pyqtSignal(str, name='fileChanged')
-    fileSaved   = pyqtSignal(str, name='fileSaved')
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -145,21 +144,6 @@ class NemeTextWidget(QSci):
         self.lastSearchFlags = 0
 
 
-    def _open(self, path):
-        self.bufferFileName = path
-        self.setText(open(self.bufferFileName, encoding='utf-8').read())
-        self.setModified(False)
-        self.fileChanged.emit(self.bufferFileName)
-
-
-    def _save(self):
-        if self.isModified():
-            with open(self.bufferFileName, mode='wt', encoding='utf-8') as f:
-                f.write(self.text())
-                self.setModified(False)
-                self.fileSaved.emit(self.bufferFileName)
-
-
     def _openWithDialog(self):
         if self.isModified():
             popup = QMessageBox(self)
@@ -174,12 +158,15 @@ class NemeTextWidget(QSci):
             answer = QMessageBox.Discard
 
         if answer == QMessageBox.Save:
-            self._save()
+            self._saveFile()
 
         if answer != QMessageBox.Cancel:
             fname = QFileDialog.getOpenFileName(self, 'Open file')
             if len(fname[0]):
-                self._open(fname[0])
+                self.bufferFileName = fname[0]
+                self.setText(open(self.bufferFileName, encoding='utf-8').read())
+                self.setModified(False)
+                self.fileChanged.emit(self.bufferFileName)
 
 
     def _findWORDPosition(self, direction):
@@ -401,17 +388,6 @@ class NemeTextWidget(QSci):
         self.SendScintilla(QSci.SCI_GOTOPOS, currentPos)
 
 
-    def _processFnKeyEvent(self, event):
-        if event.key() == Qt.Key_F1: # save
-            # XXX implement
-            self._save()
-        elif event.key() == Qt.Key_F2: # load file
-            self._openWithDialog()
-        elif event.key() == Qt.Key_F3: # save and exit
-            self._save()
-            QApplication.quit()
-
-
     class SingleUndo:
         def __init__(self, parent):
             self.parent = parent
@@ -515,8 +491,10 @@ class NemeTextWidget(QSci):
                     else:
                         process = True
                     self.prevWasEscapeFirst = False
-                elif e.key() in {Qt.Key_F1, Qt.Key_F2, Qt.Key_F3}:
-                    self._processFnKeyEvent(e)
+                elif e.key() == Qt.Key_F1: # save
+                    self._save()
+                elif e.key() == Qt.Key_F2: # load file
+                    self._openWithDialog()
                 else:
                     # just write
                     process = True
@@ -780,8 +758,11 @@ class NemeTextWidget(QSci):
                     else:
                         direction = Direction.Below
                     self._repeatLastSearch(direction)
-                elif e.key() in {Qt.Key_F1, Qt.Key_F2, Qt.Key_F3}:
-                    self._processFnKeyEvent(e)
+                elif e.key() == Qt.Key_F1: # save
+                    # XXX implement 
+                    self._save()
+                elif e.key() == Qt.Key_F2: # load file
+                    self._openWithDialog()
                 else:
                     # probably single modifier key pressed
                     clearnumberList = False
@@ -895,21 +876,18 @@ class Neme(QMainWindow):
 
     def initUI(self):
         self.scintilla = NemeTextWidget()
-        self.scintilla.fileChanged.connect(self.handleFileChange)
-        self.scintilla.fileSaved.connect(self.handleFileSave)
-        self.scintilla._open(os.path.abspath('testfile.py'))
+        self.scintilla.setText(
+                open(os.path.abspath('testfile.py'),
+                     encoding="utf8").read()
+        )
         self.scintilla.setModified(False)
         self.setCentralWidget(self.scintilla)
         self.setGeometry(300, 300, 350, 250)
+        self.scintilla.fileChanged.connect(self.handleFileChange)
         self.show()
-
 
     def handleFileChange(self, fname):
         self.setWindowTitle('Neme - {}'.format(fname))
-
-
-    def handleFileSave(self, fname):
-        print('File saved to: {}'.format(fname))
 
 
 if __name__ == '__main__':
