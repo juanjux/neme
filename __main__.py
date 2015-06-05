@@ -37,7 +37,7 @@ from pprint import pprint
 # FIXME: remove these *'s
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui     import *
-from PyQt5.QtCore    import Qt, QEvent, QCoreApplication, pyqtSignal
+from PyQt5.QtCore    import Qt, QEvent, QCoreApplication, pyqtSignal, pyqtSlot
 from PyQt5.Qsci      import QsciScintilla as QSci, QsciLexerPython
 
 # FIXME: make these configurable
@@ -77,8 +77,10 @@ class NemeTextWidget(QSci):
     ARROW_MARKER_NUM = 0
 
     # Signals
-    fileChanged = pyqtSignal(str, name='fileChanged')
-    fileSaved   = pyqtSignal(str, name='fileSaved')
+    fileChanged     = pyqtSignal(str, name = 'fileChanged')
+    fileSaved       = pyqtSignal(str, name = 'fileSaved')
+    positionChanged = pyqtSignal(int, int, name = 'positionChanged')
+    modeChanged     = pyqtSignal(int, name = 'modeChanged')
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -121,7 +123,6 @@ class NemeTextWidget(QSci):
         # Set Python lexer
         # Set style for Python comments (style number 1) to a fixed-width
         # courier.
-        #
         lexer = QsciLexerPython()
         lexer.setDefaultFont(font)
         self.setLexer(lexer)
@@ -403,7 +404,6 @@ class NemeTextWidget(QSci):
 
     def _processFnKeyEvent(self, event):
         if event.key() == Qt.Key_F1: # save
-            # XXX implement
             self._save()
         elif event.key() == Qt.Key_F2: # load file
             self._openWithDialog()
@@ -411,7 +411,7 @@ class NemeTextWidget(QSci):
             self._save()
             QApplication.quit()
 
-
+    # context manager for grouping several actions under a single undoable action
     class SingleUndo:
         def __init__(self, parent):
             self.parent = parent
@@ -421,6 +421,8 @@ class NemeTextWidget(QSci):
             self.parent.endUndoAction()
 
 
+    # context manager for grouping several actions under a single undoable action
+    # and do them with the scintilla component in read-write mode
     class ReadWriteSingleUndo:
         def __init__(self, parent):
             self.parent = parent
@@ -431,8 +433,8 @@ class NemeTextWidget(QSci):
             self.parent.endUndoAction()
             self.parent.setReadOnly(1)
 
-
-
+    # context manager for doing several actions with the scintilla component in
+    # read-write mode
     class ReadWrite:
         def __init__(self, parent):
             self.parent = parent
@@ -484,7 +486,11 @@ class NemeTextWidget(QSci):
             self.setReadOnly(1)
 
         self.mode = newmode
-        print('NewMode: {}'.format(self.mode))
+        self.modeChanged.emit(self.mode)
+
+
+    def getModeAsString(self):
+        return str(self.mode).split('.')[1]
 
 
     def processCommand(self):
@@ -493,9 +499,10 @@ class NemeTextWidget(QSci):
 
 
     def keyPressEvent(self, e):
-        process         = False # set to true to process the key at the end
-        clearnumberList = True
-        modifiers       = QApplication.keyboardModifiers()
+        process           = False # set to true to process the key at the end
+        clearnumberList   = True
+        modifiers         = QApplication.keyboardModifiers()
+        curLine, curIndex = self.getCursorPosition()
 
         # =============================================================
         # Typing Mode
@@ -673,7 +680,6 @@ class NemeTextWidget(QSci):
                 elif e.text() == 'x': # delete char at the cursor (like the del key)
                     with self.ReadWriteSingleUndo(self):
                         num = self.getNumberPrefix()
-                        curLine, curIndex = self.getCursorPosition()
                         self.setSelection(curLine, curIndex, curLine, curIndex+num)
                         self.cut()
                 elif e.text() == 'X': # delete char before the cursor (like the backspace key)
@@ -682,13 +688,11 @@ class NemeTextWidget(QSci):
                             self.SendScintilla(QSci.SCI_DELETEBACK)
                 elif e.text() == '>': # indent
                     with self.ReadWriteSingleUndo(self):
-                        curLine, _ = self.getCursorPosition()
                         for _ in range(self.getNumberPrefix()):
                             self.indent(curLine)
                             curLine += 1
                 elif e.text() == '<': # unindent
                     with self.ReadWriteSingleUndo(self):
-                        curLine, _ = self.getCursorPosition()
                         for _ in range(self.getNumberPrefix()):
                             self.unindent(curLine)
                             curLine += 1
@@ -849,13 +853,13 @@ class NemeTextWidget(QSci):
             else:
                 with self.ReadWriteSingleUndo(self):
                     for _ in range(self.replaceModeRepeat):
-                        curLine, curIndex = self.getCursorPosition()
-                        self.setSelection(curLine, curIndex, curLine, curIndex+1)
+                        line, index = self.getCursorPosition()
+                        self.setSelection(line, index, line, index+1)
                         self.SendScintilla(QSci.SCI_CLEAR)
-                        self.insertAt(e.text(), curLine, curIndex)
+                        self.insertAt(e.text(), line, index)
 
                         if self.replaceModeRepeat > 1:
-                            self.setCursorPosition(curLine, curIndex+1)
+                            self.setCursorPosition(line, index+1)
 
                 self.replaceModeRepeat = 1
                 self.setMode(EditorMode.Movement)
@@ -885,31 +889,58 @@ class NemeTextWidget(QSci):
         if process:
             super().keyPressEvent(e)
 
+        # check the cursor position; if changed, emit the positionChanged signal
+        endLine, endIndex = self.getCursorPosition()
+        if endLine != curLine or endIndex != curIndex:
+            self.positionChanged.emit(endLine, endIndex)
 
 class Neme(QMainWindow):
 
     def __init__(self):
         super().__init__()
         self.initUI()
+        self.textComponent.fileSaved.connect(self.handleFileSave)
+        self.textComponent.positionChanged.connect(self.updateStatusBar)
+        self.textComponent.modeChanged.connect(self.updateStatusBar)
 
 
     def initUI(self):
-        self.scintilla = NemeTextWidget()
-        self.scintilla.fileChanged.connect(self.handleFileChange)
-        self.scintilla.fileSaved.connect(self.handleFileSave)
-        self.scintilla._open(os.path.abspath('testfile.py'))
-        self.scintilla.setModified(False)
-        self.setCentralWidget(self.scintilla)
+        self.textComponent = NemeTextWidget()
+        self.textComponent.fileChanged.connect(self.handleFileChange)
+        self.textComponent._open(os.path.abspath('testfile.py'))
+        self.textComponent.setModified(False)
+        self.setCentralWidget(self.textComponent)
         self.setGeometry(300, 300, 350, 250)
         self.show()
 
 
+    @pyqtSlot(str)
     def handleFileChange(self, fname):
         self.setWindowTitle('Neme - {}'.format(fname))
+        self.statusBar().showMessage('File changed to {}'.format(fname))
 
 
+    @pyqtSlot(str)
     def handleFileSave(self, fname):
-        print('File saved to: {}'.format(fname))
+        self.statusBar().showMessage('File saved to: {}'.format(fname))
+
+
+    @pyqtSlot(int, int)
+    def updateStatusBar(self):
+        line, index = self.textComponent.getCursorPosition()
+        totalLines = self.textComponent.lines()
+        if totalLines == 0: 
+            totalLines = 1 # protect against 0divisions
+
+        statusLineParams = {
+                'line': line,
+                'index': index,
+                'mode': self.textComponent.getModeAsString(),
+                'fnameBase': os.path.basename(self.textComponent.bufferFileName),
+                'percent': int(((line + 1)/ totalLines) * 100)
+        }
+        self.statusBar().showMessage('{mode} | {fnameBase} | {percent} | {line}.{index}'
+                                     .format(**statusLineParams))
 
 
 if __name__ == '__main__':
