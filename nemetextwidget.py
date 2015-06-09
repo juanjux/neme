@@ -184,7 +184,6 @@ class NemeTextWidget(QSci):
             QApplication.quit()
 
 
-
     def hasNumberPrefix(self):
         return bool(len(self.numberList))
 
