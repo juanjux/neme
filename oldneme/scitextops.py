@@ -2,9 +2,9 @@ from enums import *
 from PyQt5.Qsci import QsciScintilla as QSci
 
 SELMODE2SCISELMODE = {
-        SelectionMode.Character   : QSci.SC_SEL_STREAM,
-        SelectionMode.Line        : QSci.SC_SEL_LINES,
-        SelectionMode.Rectangular : QSci.SC_SEL_RECTANGLE
+            SelectionMode.Character   : QSci.SC_SEL_STREAM,
+            SelectionMode.Line        : QSci.SC_SEL_LINES,
+            SelectionMode.Rectangular : QSci.SC_SEL_RECTANGLE
 }
 
 class SciTextOps:

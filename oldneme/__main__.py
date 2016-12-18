@@ -11,7 +11,7 @@ Objectives of this project:
     - get up to date with Python3 and Qt5 (and C++ later, after prototyping)
     - have my own editor that I can modify easily to satisfy my needs
     - rethink the modal operation for modern keyboards hjkl => jikl, chord
-      as default to exit typing (ex-insert) mode, etc.
+      as default to exit typing (ex-insert) mode.
     - don't use anything needing to press a modifier (not even shift) for basic operations
     - avoid symbols that usually need shift in non-us keyboards (like '/' to search
       or ':' to enter commands).
@@ -30,11 +30,11 @@ TODO:
     - make the command-keys configurable (currently: hardcoded)
 """
 
-import sys, os, enum
-from pprint           import  pprint
-from PyQt5.QtWidgets  import  QMainWindow, QApplication
-from PyQt5.QtCore     import  pyqtSlot
-from nemetextwidget   import  NemeTextWidget
+import sys, os
+from pprint import pprint # noqa: F401
+from PyQt5.QtWidgets import QMainWindow, QApplication
+from PyQt5.QtCore import pyqtSlot
+from nemetextwidget import NemeTextWidget
 
 
 class Neme(QMainWindow):
@@ -68,11 +68,11 @@ class Neme(QMainWindow):
         self.statusBar().showMessage('File saved to: {}'.format(fname))
 
 
-    @pyqtSlot(int, int)
+    @pyqtSlot(int)
     def updateStatusBar(self):
         line, index = self.textComponent.getCursorPosition()
         totalLines = self.textComponent.lines()
-        if totalLines == 0: 
+        if totalLines == 0:
             totalLines = 1 # protect against 0divisions
 
         statusLineParams = {

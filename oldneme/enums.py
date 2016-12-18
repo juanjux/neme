@@ -2,11 +2,11 @@ import enum
 from PyQt5.QtCore import Qt
 
 class EditorMode(enum.Enum):
-    Typing        = 1
-    Movement      = 2
-    Command       = 3
-    ReplaceChar   = 4
-    FindChar      = 5
+    Typing      = 1
+    Movement    = 2
+    Command     = 3
+    ReplaceChar = 4
+    FindChar    = 5
 
 
 class Direction(enum.Enum):
@@ -21,6 +21,7 @@ class SelectionMode(enum.IntEnum):
     Character   = 2
     Line        = 3
     Rectangular = 4
+
 
 # FIXME: make these configurable
 ESCAPEFIRST     = "k"
