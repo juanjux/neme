@@ -41,14 +41,14 @@ class Buffer:
         self.selections = [] # type: List[Selection]
 
         self.moveselect_method = {
-            Subject.Char: self.ms_char,
-            Subject.Word: self.ms_word,
-            Subject.Line: self.ms_line,
-            Subject.Sentence: self.ms_sentence,
-            Subject.Paragraph: self.ms_paragraph,
-            Subject.Function: self.ms_function,
-            Subject.Class: self.ms_class,
-            Subject.FullFile: self.ms_fullfile
+            Subject.Char      : self.ms_char,
+            Subject.Word      : self.ms_word,
+            Subject.Line      : self.ms_line,
+            Subject.Sentence  : self.ms_sentence,
+            Subject.Paragraph : self.ms_paragraph,
+            Subject.Function  : self.ms_function,
+            Subject.Class     : self.ms_class,
+            Subject.FullFile  : self.ms_fullfile
         }
 
     def process_subject(self, count: int, subject: Subject, direction: Direction) -> None:
