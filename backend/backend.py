@@ -5,7 +5,7 @@ import sys, os
 from enum import Enum, unique
 from collections import namedtuple
 from blist import blist
-from typing import Tuple, Optional
+from typing import Tuple
 
 @unique
 class Subject(Enum):
@@ -75,7 +75,7 @@ class Buffer:
 
     @pos.setter
     def pos(self, newpos: int) -> None:
-        self._pos = min(newpos, len(self.textl) - 1)
+        self._pos = max(0, min(int(newpos), len(self.textl) - 1))
         self.update_line_col()
 
     @property
@@ -84,9 +84,9 @@ class Buffer:
 
     @line.setter
     def line(self, newline: int) -> None:
-        self._line = min(newline, self.num_lines)
+        self._line = min(int(newline), self.num_lines)
         # column doest change
-        self._pos = self.update_pos()
+        self.update_pos()
 
     @property
     def column(self) -> int:
@@ -94,8 +94,8 @@ class Buffer:
 
     @column.setter
     def column(self, newcolumn: int) -> None:
-        self._column = min(newcolumn, self.cur_line_length)
-        self._pos = self.update_pos()
+        self._column = min(int(newcolumn), self.cur_line_length)
+        self.update_pos()
 
     @property
     def cur_line_length(self) -> int:
@@ -110,7 +110,7 @@ class Buffer:
     def line_and_column(self, linecolumn: Tuple[int, int]) -> None:
         self._line   = min(linecolumn[0], self.num_lines)
         self._column = min(linecolumn[1], self.cur_line_length)
-        self._pos = self.update_pos()
+        self.update_pos()
 
     def update_line_col(self) -> None:
         prev_text = self.textl[:self._pos + 1]

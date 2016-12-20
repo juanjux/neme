@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import unittest
 import backend
-from blist import blist
 
 class TestBuffer(unittest.TestCase):
     # Columns should always be pos in line + 1
@@ -28,6 +27,7 @@ class TestBuffer(unittest.TestCase):
 
     def test_pos(self):
         # TODO: test negros con negativos o cosas raras
+        # TODO: tests de getter de pos en los de 99999
         self.assertEqual(self.buf1.pos, 0)
         self.assertEqual(self.bufnull.pos, 0)
 
@@ -54,10 +54,73 @@ class TestBuffer(unittest.TestCase):
         self.buf2.pos = 99999999
         self.assertEqual(self.buf2.line, 4)
         self.assertEqual(self.buf2.column, 2)
+        self.assertEqual(self.buf2.pos, len(self.t2) - 1)
 
         self.bufnull.pos = 99999999
         self.assertEqual(self.bufnull.line, 1)
         self.assertEqual(self.bufnull.column, 1)
+        self.assertEqual(self.bufnull.pos, len(self.tnull) - 1)
+
+        self.buf2.pos = -1234556
+        self.assertEqual(self.buf2.pos, 0)
+
+        self.bufnull.pos = -124324
+        self.assertEqual(self.bufnull.pos, 0)
+
+        self.buf2.pos = 3.14
+        self.assertEqual(self.buf2.pos, 3)
+
+    def test_line(self):
+        pass
+
+    def test_column(self):
+        pass
+
+    def test_cur_line_length(self):
+        pass
+
+    def test_line_and_column(self):
+        pass
+
+    def test_update_line_col(self):
+        pass
+
+    def test_update_pos(self):
+        pass
+
+    def test_num_lines(self):
+        pass
+
+    def test_ms_char(self):
+        pass
+
+    def test_ms_word(self):
+        pass
+
+    def test_ms_line(self):
+        pass
+
+    def test_ms_sentence(self):
+        pass
+
+    def test_ms_paragraph(self):
+        pass
+
+    def test_ms_class(self):
+        pass
+
+    def test_ms_fullfile(self):
+        pass
+
+    def test_empty_selections(self):
+        pass
+
+    def test_update_column(self):
+        pass
+
+    def previous_newline_pos(self):
+        pass
+
 
 
 
