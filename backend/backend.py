@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
+# FIXME: disable asserts when not in debug mode, some are expensive
+# FIXME: decide if (param=value) or (param = value)
 import sys, os
 from enum import Enum, unique
 from collections import namedtuple
+from blist import blist
+from typing import Tuple, Optional
 
 @unique
 class Subject(Enum):
@@ -25,19 +29,25 @@ Selection = namedtuple('Selection', ['start', 'end'])
 class BufferInitializeException(Exception): pass
 
 class Buffer:
-    def __init__(self, filepath: str=None, text:str=None) -> None:
-        if not filepath and not text:
+    """
+    self._pos is 0 based
+    self._line and self._column is 1 based
+    """
+    def __init__(self, filepath: str = None, text: str = None) -> None:
+        if not filepath and text is None:
             raise BufferInitializeException('Buffer must be instantiated with a filepath'
                                             'or a text')
         if filepath:
             with open(filepath, 'r') as f:
-                self.text = f.read()
+                self.textl = blist(f.read())
         else:
-            self.text = text
+            self.textl = blist(text)
 
-        self.pos        = 0
-        self.line       = 0
-        self.column     = 0
+        # Fixme: there three must be properties and update toghether on write
+        self._pos        = 0
+        self._line       = 1
+        self._column     = 1
+
         self.selections = [] # type: List[Selection]
 
         self.moveselect_method = {
@@ -50,6 +60,84 @@ class Buffer:
             Subject.Class     : self.ms_class,
             Subject.FullFile  : self.ms_fullfile
         }
+
+    @property
+    def text(self) -> str:
+        return ''.join(self.textl)
+
+    @text.setter
+    def text(self, text: str) -> None:
+        self.textl = blist(text)
+
+    @property
+    def pos(self) -> int:
+        return self._pos
+
+    @pos.setter
+    def pos(self, newpos: int) -> None:
+        self._pos = min(newpos, len(self.textl) - 1)
+        self.update_line_col()
+
+    @property
+    def line(self) -> int:
+        return self._line
+
+    @line.setter
+    def line(self, newline: int) -> None:
+        self._line = min(newline, self.num_lines)
+        # column doest change
+        self._pos = self.update_pos()
+
+    @property
+    def column(self) -> int:
+        return self._column
+
+    @column.setter
+    def column(self, newcolumn: int) -> None:
+        self._column = min(newcolumn, self.cur_line_length)
+        self._pos = self.update_pos()
+
+    @property
+    def cur_line_length(self) -> int:
+        # FIXME: esto esta mal, tiene que contar de \n a \n
+        pass
+
+    @property
+    def line_and_column(self) -> Tuple[int, int]:
+        return self._line, self._column
+
+    @line_and_column.setter
+    def line_and_column(self, linecolumn: Tuple[int, int]) -> None:
+        self._line   = min(linecolumn[0], self.num_lines)
+        self._column = min(linecolumn[1], self.cur_line_length)
+        self._pos = self.update_pos()
+
+    def update_line_col(self) -> None:
+        prev_text = self.textl[:self._pos + 1]
+
+        self._line = prev_text.count('\n')
+        if prev_text[self._pos] != '\n':
+            self._line += 1
+
+        self.update_column()
+
+    def update_pos(self) -> None:
+        assert self._line <= self.num_lines
+
+        lines_found = 0
+        current_pos = -1
+
+        while lines_found < self._line:
+            nextline = self.textl.index('\n', current_pos + 1)
+            lines_found += 1
+            current_pos = nextline + 1
+
+        self._pos = current_pos + self._column
+
+    @property
+    def num_lines(self) -> int:
+        return self.textl.count('\n') + 1
+
 
     def process_subject(self, count: int, subject: Subject, direction: Direction) -> None:
         # TODO: allow extending selections
@@ -78,27 +166,51 @@ class Buffer:
         pass
 
     def ms_fullfile(self, direction: Direction) -> None:
-        if self.pos == len(self.text) and direction == Direction.Forward or\
+        if self.pos == len(self.textl)- 1 and direction == Direction.Forward or\
            self.pos == 0 and direction == Direction.Backward:
                 return
 
         if direction == Direction.Forward:
-            if self.pos == len(self.text - 1):
+            if self.pos == len(self.textl) - 1:
                 return
 
-            self.selections.append(Selection(self.pos, len(self.text)))
-            self.pos = len(self.text - 1)
+            self.selections.append(Selection(self.pos, len(self.textl) - 1))
+            self.pos = len(self.textl) - 1
 
-        else:
+        else: # Backward
             if self.pos == 0:
                 return
 
             self.selections.append(Selection(0, self.pos))
             self.pos = 0
 
-    def empty_selections(self):
+    def empty_selections(self) -> None:
         del self.selections[:]
         # TODO: emit
+
+    def update_column(self) -> int:
+        prev_newline_pos = self.previous_newline_pos()
+        self._column = self._pos - prev_newline_pos
+
+        if prev_newline_pos == 0:
+            self._column += 1
+
+    def previous_newline_pos(self) -> int:
+        currentpos = self._pos
+
+        if self.textl[currentpos] == '\n':
+            currentpos -= 1
+
+        while True:
+            if currentpos == 0:
+                return 0
+
+            if self.textl[currentpos] == '\n':
+                break
+
+            currentpos -= 1
+
+        return currentpos
 
 
 def main() -> None:
