@@ -25,12 +25,11 @@ class TestBuffer(unittest.TestCase):
         self.buf1.text = newstr
         self.assertEqual(self.buf1.text, newstr)
 
-    def test_pos(self):
-        # TODO: test negros con negativos o cosas raras
-        # TODO: tests de getter de pos en los de 99999
+    def test_pos_get(self):
         self.assertEqual(self.buf1.pos, 0)
         self.assertEqual(self.bufnull.pos, 0)
 
+    def test_pos_set(self):
         self.buf1.pos = 0
         self.assertEqual(self.buf1.line, 1)
         self.assertEqual(self.buf1.column, 1)
@@ -70,8 +69,34 @@ class TestBuffer(unittest.TestCase):
         self.buf2.pos = 3.14
         self.assertEqual(self.buf2.pos, 3)
 
-    def test_line(self):
-        pass
+    def test_numlines(self):
+        self.assertEqual(self.buf1.num_lines, 1)
+        self.assertEqual(self.buf2.num_lines, 4)
+        self.assertEqual(self.buf3.num_lines, 1)
+
+        buf_ends_newline = backend.Buffer(text = self.t2[:-2])
+        self.assertEqual(buf_ends_newline.num_lines, 4)
+
+    def test_line_get(self):
+        self.assertEqual(self.buf1.line, 1)
+        self.assertEqual(self.buf2.line, 1)
+        self.assertEqual(self.buf3.line, 1)
+        self.assertEqual(self.bufnull.line, 1)
+
+    def test_line_set(self):
+        oldcol1 = self.buf1.column
+        self.buf1.line = 2
+        self.assertEqual(self.buf1.line, 1)
+        self.assertEqual(self.buf1.column, oldcol1)
+
+        self.buf2.pos = 35
+        self.assertEqual(self.buf2.line, 2)
+        oldcolumn = self.buf2.column
+        self.buf2.line = 3
+        self.assertEqual(self.buf2.line, 3)
+        self.assertEqual(self.buf2.column, oldcolumn)
+
+
 
     def test_column(self):
         pass

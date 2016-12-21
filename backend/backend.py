@@ -75,7 +75,14 @@ class Buffer:
 
     @pos.setter
     def pos(self, newpos: int) -> None:
-        self._pos = max(0, min(int(newpos), len(self.textl) - 1))
+        if newpos == self._pos:
+            return
+
+        newpos2 = max(0, min(int(newpos), len(self.textl) - 1))
+        if newpos2 == self._pos:
+            return
+
+        self._pos = newpos2
         self.update_line_col()
 
     @property
@@ -84,8 +91,18 @@ class Buffer:
 
     @line.setter
     def line(self, newline: int) -> None:
-        self._line = min(int(newline), self.num_lines)
+        if newline == self._line:
+            return
+
+        newline2 = min(int(newline), self.num_lines)
+        if newline2 == self._line:
+            return
+
+        self._line = newline2
+        if self._column > self.cur_line_length:
+            self._column = self.cur_line_length
         # column doest change
+        # FIXME: it should be max(
         self.update_pos()
 
     @property
@@ -94,6 +111,9 @@ class Buffer:
 
     @column.setter
     def column(self, newcolumn: int) -> None:
+        if newcolumn == self._column:
+            return
+
         self._column = min(int(newcolumn), self.cur_line_length)
         self.update_pos()
 
