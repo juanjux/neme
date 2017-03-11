@@ -3,7 +3,10 @@
 	"authors": [
 		"juanjux"
 	],
-	"description": "A minimal D application.",
-	"copyright": "Copyright © 2017, juanjux",
-	"license": "proprietary"
+	"description": "Some day this will be an editor",
+	"copyright": "Copyright © 2017, Juan Jose Alvarez Martinez",
+	"license": "GPL3",
+	"buildTypes": {},
+	"targetType": "executable",
+	"configurations": []
 }
