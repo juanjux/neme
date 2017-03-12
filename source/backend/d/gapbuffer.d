@@ -184,9 +184,8 @@ private:
     public void reallocate(uint gapSizeIncrease)
     {
         immutable oldContentAfterGapLen = contentAfterGap.length;
-        char[] newBuffer = contentBeforeGap ~ 
-                           new char[gapSize + gapSizeIncrease] ~
-                           contentAfterGap;
+        char[] newBuffer = 
+            contentBeforeGap ~ new char[gapSize + gapSizeIncrease] ~ contentAfterGap;
         buffer = newBuffer;
         gapEnd = buffer.length - oldContentAfterGapLen;
     }
