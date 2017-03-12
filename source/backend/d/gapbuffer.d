@@ -1,7 +1,7 @@
 module gapbuffer;
 
 import std.algorithm.comparison : max, min;
-import std.array : join, replicate, appender;
+import std.array : join, replicate, appender, insertInPlace, minimallyInitializedArray;
 import std.container.array : Array;
 import std.conv;
 import std.stdio;
@@ -29,7 +29,8 @@ private:
     /// Constructor that takes a string as the inital contents
     public this(string text)
     {
-        buffer = new char[gapSize] ~ asArray(text);
+        // TODO: speed test the replicate vs a simple new char[gapSize]
+        buffer = replicate(['-'], gapSize) ~ asArray(text);
         libArray = Array!char(asArray(text));
         gapStart = 0;
         gapEnd = gapSize;
@@ -40,8 +41,8 @@ private:
      */
     public void debugContent()
     {
-        writeln("start: ", gapStart, " end: ",
-                gapEnd, " len: ", buffer.length);
+        writeln("start: ", gapStart, " end: ", gapEnd, " len: ", buffer.length,
+                " currentGapLen: ", currentGapSize);
         writeln("Before: ");
         writeln(contentBeforeGap);
         writeln("After:");
@@ -179,14 +180,67 @@ private:
 
     }
 
-    // Reallocates the buffer, increasing the gap size if gapSizeIncrease > 0
+    // Reallocates the buffer, creating a new gap of the original size or bigger
+    // if gapSizeIncrease is greated than 0. If textToAdd is != than null and 
+    // textToAdd.length > 0 it will be also be added just before the start of
+    // the new gap.
     // FIXME: make private
-    public void reallocate(uint gapSizeIncrease)
+    public void reallocate(uint gapSizeIncrease, string textToAdd)
     {
+        if (textToAdd == null) {
+            textToAdd = "";
+        }
+
+        // TODO: speed test with this too:
+        // char[] newBuffer = 
+        //     contentBeforeGap ~ new char[gapSize] ~ contentAfterGap;
+        // buffer = newBuffer;
+
+        char[] arrayToAdd;
+        if (currentGapSize >= gapSize + gapSizeIncrease) 
+        {
+            // This was called because the text doesn't fill in the gap, yet our current
+            // gat is greter than the requested one; just add the new text before the 
+            // current gap when reallocating
+            arrayToAdd = asArray(textToAdd);
+        } else 
+        {
+            // curent gap smaller than the requested one, restore (or increase) the gap 
+            // size and put the new text (if any) at the start
+            gapSize += gapSizeIncrease;
+            arrayToAdd = asArray(textToAdd) ~ replicate(['-'], gapSize - currentGapSize);
+        }
+
         immutable oldContentAfterGapLen = contentAfterGap.length;
-        char[] newBuffer = 
-            contentBeforeGap ~ new char[gapSize + gapSizeIncrease] ~ contentAfterGap;
-        buffer = newBuffer;
+        buffer.insertInPlace(gapStart, arrayToAdd);
         gapEnd = buffer.length - oldContentAfterGapLen;
+        gapStart += textToAdd.length;
+    }
+
+    /** 
+     * Alias for reallocate(gapSizeIncrease, null)
+     */
+    pragma(inline):
+    public void reallocate(uint gapSizeIncrease) 
+    {
+        reallocate(gapSizeIncrease, null);
+    }
+
+    /** 
+     * Alias for reallocate(0, null)
+     */
+    pragma(inline):
+    public void reallocate() 
+    {
+        reallocate(0, null);
+    }
+
+    /** 
+     * Alias for reallocate(0, textToAdd)
+     */
+    pragma(inline):
+    public void reallocate(string textToAdd)
+    {
+        reallocate(0, textToAdd);
     }
 }

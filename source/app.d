@@ -54,7 +54,20 @@ void main()
     // gBuffer.deleteLeft(10_000);
     // gBuffer.debugContent();
 
-    writeln("\n=== Reallocate with the same size ===");
+    writeln("\n=== Reallocate with same sized gap without new text ===");
+    // This wont produce a real gap increase since currentGap > original gap size
+    gBuffer.reallocate();
+    gBuffer.debugContent();
+
+    writeln("\n=== Reallocate with +20 size without new text ===");
     gBuffer.reallocate(20);
+    gBuffer.debugContent();
+
+    writeln("\n=== Reallocate with same sized gap with new text ===");
+    gBuffer.reallocate("THIS IS THE NEW TEXT");
+    gBuffer.debugContent();
+
+    writeln("\n=== Reallocate with +20 sized gap with new text ===");
+    gBuffer.reallocate(20, "MORE NEW TEXT");
     gBuffer.debugContent();
 }
