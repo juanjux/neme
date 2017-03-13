@@ -43,31 +43,52 @@ void main()
     gBuffer.deleteRight(3);
     gBuffer.debugContent();
 
-    // gBuffer.deleteLeft(10_000);
-    // gBuffer.debugContent();
+    writeln("\n=== Delete 10.000 left ===");
+    gBuffer.deleteLeft(10_000);
+    gBuffer.debugContent();
 
-    // gBuffer.deleteRight(10_000);
-    // gBuffer.debugContent();
-    // gBuffer.deleteRight(10_000);
-    // gBuffer.debugContent();
+    writeln("\n=== Delete 10.000 right ===");
+    gBuffer.deleteRight(10_000);
+    gBuffer.debugContent();
 
-    // gBuffer.deleteLeft(10_000);
-    // gBuffer.debugContent();
+    writeln("\n=== Delete 10.000 right again ===");
+    gBuffer.deleteRight(10_000);
+    gBuffer.debugContent();
 
-    writeln("\n=== Reallocate with same sized gap without new text ===");
+    writeln("\n=== Delete 10.000 left again ===");
+    gBuffer.deleteLeft(10_000);
+    gBuffer.debugContent();
+
+    writeln("\n=== Reallocate with same sized gap ===");
     // This wont produce a real gap increase since currentGap > original gap size
     gBuffer.reallocate();
     gBuffer.debugContent();
 
-    writeln("\n=== Reallocate with +20 size without new text ===");
-    gBuffer.reallocate(20);
+    writeln("\n=== Reallocate with with new text ===");
+    gBuffer.reallocate("||THIS IS THE NEW TEXT||");
     gBuffer.debugContent();
 
-    writeln("\n=== Reallocate with same sized gap with new text ===");
-    gBuffer.reallocate("THIS IS THE NEW TEXT");
+    writeln("\n=== Reallocate with with new text ===");
+    gBuffer.reallocate("||MORE NEW TEXT||");
+    gBuffer.debugContent();
+    
+    writeln("\n=== Adding text smaller than the gap ===");
+    gBuffer.addText("||Added with addtext||");
     gBuffer.debugContent();
 
-    writeln("\n=== Reallocate with +20 sized gap with new text ===");
-    gBuffer.reallocate(20, "MORE NEW TEXT");
+    // Make a small gap easy to fill and reallocate
+    writeln("\n=== Decreasing gap size and reallocationg ===");
+    gBuffer.gapSize = 5;
+    gBuffer.debugContent();
+    // Now write something bigger
+    gBuffer.addText("||polompos pok||");
+    gBuffer.debugContent();
+
+    writeln("\n=== Move cursor backward 1000 ===");
+    gBuffer.cursorBackward(1000);
+    gBuffer.debugContent();
+
+    writeln("\n=== Move cursor forward 1000 ===");
+    gBuffer.cursorForward(1000);
     gBuffer.debugContent();
 }

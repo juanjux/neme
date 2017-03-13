@@ -1,16 +1,26 @@
 module gapbuffer;
 
+// TODO: import cleanup
 import std.algorithm.comparison : max, min;
 import std.array : join, replicate, appender, insertInPlace, minimallyInitializedArray;
 import std.container.array : Array;
 import std.conv;
 import std.stdio;
+import std.typecons: Flag;
+import std.exception: mayPointTo, doesPointTo;
 
-
-// TODO: constructor with a file argument and no argument
 // TODO: text with the libArray too
+// TODO: Make it work with unicode codepoints
 // TODO: Make it a template AnyText
 
+pragma(inline):
+private bool overlaps(ulong destStart, ulong destEnd,
+                        ulong sourceStart, ulong sourceEnd)
+{
+    writeln(destStart, ",", destEnd, ",", sourceStart, ",", sourceEnd);
+    return (destStart > sourceStart && destStart < sourceEnd) ||
+            (destEnd > sourceStart && destEnd < sourceEnd);
+}
 
 /// Struct user as Gap Buffer
 struct GapBuffer
@@ -24,16 +34,18 @@ private:
     Array!char libArray;
     long gapStart;
     long gapEnd;
-    ulong gapSize = 100;
+    ulong initialGapSize;
 
+    // TODO: increase gap size to something bigger
     /// Constructor that takes a string as the inital contents
-    public this(string text)
+    public this(string text, ulong gapSize = 100)
     {
-        // TODO: speed test the replicate vs a simple new char[gapSize]
-        buffer = replicate(['-'], gapSize) ~ asArray(text);
+        initialGapSize = gapSize;
+        // TODO: speed test the replicate vs a simple new char[initialGapSize]
+        buffer = replicate(['-'], initialGapSize) ~ asArray(text);
         libArray = Array!char(asArray(text));
         gapStart = 0;
-        gapEnd = gapSize;
+        gapEnd = initialGapSize;
     }
 
     /** Print the raw contents of the buffer and a guide line below with the 
@@ -41,13 +53,13 @@ private:
      */
     public void debugContent()
     {
-        writeln("start: ", gapStart, " end: ", gapEnd, " len: ", buffer.length,
-                " currentGapLen: ", currentGapSize);
-        writeln("Before: ");
+        writeln("gapstart: ", gapStart, " gapend: ", gapEnd, " len: ", buffer.length,
+                " currentGapSize: ", currentGapSize, " initialGapSize: ", initialGapSize);
+        writeln("BeforeGap: ");
         writeln(contentBeforeGap);
-        writeln("After:");
+        writeln("AfterGap:");
         writeln(contentAfterGap);
-        writeln("Processed test:");
+        writeln("Text content:");
         writeln(content);
         writeln("Full buffer: ");
         writeln(buffer.to!string);
@@ -86,22 +98,45 @@ private:
         return buffer[gapEnd .. $];
     }
 
+
+    // TODO: keep this calculated updating the total every time there
+    // is an insertion or deletion (keept this as an invariant check for the class)
     pragma(inline):
     @property private long currentGapSize()
     {
         return buffer.length - contentBeforeGap.length - contentAfterGap.length;
     }
 
+    pragma(inline):
+    @property public ulong gapSize()
+    {
+        return initialGapSize;
+    }
+
+    pragma(inline):
+    @property  public void gapSize(ulong newSize)
+    {
+        import std.exception: enforce;
+        enforce(newSize > 1, "Minimum gap size must be greater than 1");
+        initialGapSize = newSize;
+        reallocate("", true);
+    }
+
     public void cursorForward(long count)
     {
-        // FIXME: log
         if (buffer.length == 0 || gapEnd + 1 == buffer.length)
             return;
 
+        // TODO: test if this gives any real speed over always doing the dup
         long charsToCopy = min(count, buffer.length - gapEnd);
         long newGapStart = gapStart + charsToCopy;
         long newGapEnd = gapEnd + charsToCopy;
-        buffer[gapStart .. newGapStart] = buffer[gapEnd .. newGapEnd];
+
+        if (overlaps(gapStart, newGapStart, gapEnd, newGapEnd)) {
+            buffer[gapStart..newGapStart] = buffer[gapEnd..newGapEnd].dup;
+        } else {
+            buffer[gapStart..newGapStart] = buffer[gapEnd..newGapEnd];
+        }
 
         gapStart = newGapStart;
         gapEnd = newGapEnd;
@@ -119,10 +154,17 @@ private:
         if (buffer.length == 0 || gapStart == 0)
             return;
 
+        // TODO: overlap detection to avoid using the tmp
         long charsToCopy = min(count, gapStart);
         long newGapStart = gapStart - charsToCopy;
         long newGapEnd = gapEnd - charsToCopy;
-        buffer[newGapStart .. gapStart] = buffer[newGapEnd .. gapEnd];
+
+        // TODO: test if this gives any real speed over always doing the dup
+        if (overlaps(newGapEnd, gapEnd, newGapStart, gapStart)) {
+            buffer[newGapEnd .. gapEnd] = buffer[newGapStart..gapStart].dup;
+        } else {
+            buffer[newGapEnd .. gapEnd] = buffer[newGapStart..gapStart];
+        }
 
         gapStart = newGapStart;
         gapEnd = newGapEnd;
@@ -158,89 +200,48 @@ private:
         gapEnd = min(gapEnd + count, buffer.length);
     }
 
+    // TODO: support increasing the gap size on every reallocation
     /**
      * Adds text, moving the cursor to the end of the new text. Could cause
      * a reallocation of the buffer.
      * Params:
      *     text = text to add.
      */
-    public void addLeft(string text)
+    public void addText(string text)
     {
-
+        auto arrayText = asArray(text);
+        if (arrayText.length >= currentGapSize) {
+            // doesnt fill in the gap, reallocate the buffer adding the text
+            reallocate(text);
+        } else {
+            auto newGapStart = gapStart + arrayText.length;
+            buffer[gapStart..newGapStart] = arrayText;
+            gapStart = newGapStart;
+        }
     }
 
-    /** 
-     * Adds text to the right of the cursor without moving it. Could cause
-     * a reallocation of the buffer.
-     * Params:
-     *     text = text to add.
-     */
-    public void addRight(string text)
-    {
-
-    }
-
-    // Reallocates the buffer, creating a new gap of the original size or bigger
-    // if gapSizeIncrease is greated than 0. If textToAdd is != than null and 
-    // textToAdd.length > 0 it will be also be added just before the start of
-    // the new gap.
-    // FIXME: make private
-    public void reallocate(uint gapSizeIncrease, string textToAdd)
+    // Reallocates the buffer, creating a new gap of the configured size.
+    // If the textToAdd parameter is used it will be added just before the start of
+    // the new gap. This is useful to do less copy operations since usually you
+    // want to reallocate the buffer because you want to insert a new text that
+    // if to big for the gap.
+    // Params:
+    //  textToAdd: when reallocating, add this text before/after the gap (or cursor)
+    //      depending on the textDir parameter.
+    public void reallocate(string textToAdd="", bool forceRecreateGap=false)
     {
         if (textToAdd == null) {
             textToAdd = "";
         }
 
-        // TODO: speed test with this too:
-        // char[] newBuffer = 
-        //     contentBeforeGap ~ new char[gapSize] ~ contentAfterGap;
-        // buffer = newBuffer;
-
-        char[] arrayToAdd;
-        if (currentGapSize >= gapSize + gapSizeIncrease) 
-        {
-            // This was called because the text doesn't fill in the gap, yet our current
-            // gat is greter than the requested one; just add the new text before the 
-            // current gap when reallocating
-            arrayToAdd = asArray(textToAdd);
-        } else 
-        {
-            // curent gap smaller than the requested one, restore (or increase) the gap 
-            // size and put the new text (if any) at the start
-            gapSize += gapSizeIncrease;
-            arrayToAdd = asArray(textToAdd) ~ replicate(['-'], gapSize - currentGapSize);
-        }
-
+        auto charText = asArray(textToAdd);
         immutable oldContentAfterGapLen = contentAfterGap.length;
-        buffer.insertInPlace(gapStart, arrayToAdd);
+        auto newbuffer = buffer[0..contentBeforeGap.length] ~ 
+                         charText ~
+                         replicate(['-'], initialGapSize) ~
+                         contentAfterGap;
+        buffer = newbuffer;
+        gapStart += charText.length;
         gapEnd = buffer.length - oldContentAfterGapLen;
-        gapStart += textToAdd.length;
-    }
-
-    /** 
-     * Alias for reallocate(gapSizeIncrease, null)
-     */
-    pragma(inline):
-    public void reallocate(uint gapSizeIncrease) 
-    {
-        reallocate(gapSizeIncrease, null);
-    }
-
-    /** 
-     * Alias for reallocate(0, null)
-     */
-    pragma(inline):
-    public void reallocate() 
-    {
-        reallocate(0, null);
-    }
-
-    /** 
-     * Alias for reallocate(0, textToAdd)
-     */
-    pragma(inline):
-    public void reallocate(string textToAdd)
-    {
-        reallocate(0, textToAdd);
     }
 }
