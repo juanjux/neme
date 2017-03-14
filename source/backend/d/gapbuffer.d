@@ -6,30 +6,49 @@ import std.container.array : Array;
 import std.conv;
 import std.exception: assertNotThrown, assertThrown, enforce;
 import std.stdio;
+import std.traits;
 import std.typecons: Flag;
 
-// TODO: add contentBeforeCursor and contentAfterCursor that call
-// contentBefore/AfterGap but converting to string (or other immutable type)
+// TODO: remove the casts in the tests and elsewhere, use a generic AnyStr argument and force
+// the conversion to dchar[] or dstring inside the methods
+// TODO: benchmark vs UTF8 (char[] and normal string, taking in account the code points)
+// TODO: Implement the range interface(s)
 // TODO: text with the libArray too
-// FIXME: Make it work with unicode codepoints
+// FIXME: Make it work with unicode codepoints:
+//  std.utf.count to get the length,
+//  std.uni.normalize(NFC) to make sure code points are not composed from several
 // TODO: Make it a template AnyText
 // TODO: Methods to move the cursor to the start or end, maybe with optimized copy
 // TODO: attributes, safe, nothrow, pure, etc
 // TODO: support optionally increasing the gap size on every reallocation
 // TODO: add a demo mode (you type but the buffer representation is shown in
 //       real time as you type or move the cursor)
+// TODO: add public contentBeforeCursor, contentAfterCursor, contentAtPosition that call
+// contentBefore/AfterGap but converting to dstring (or other immutable type) (maybe unneded
+// after implemeting the range interfaces).
 
 pragma(inline):
-private bool overlaps(ulong destStart, ulong destEnd,
+pure private bool overlaps(ulong destStart, ulong destEnd,
                         ulong sourceStart, ulong sourceEnd)
 {
-    // TODO: unittest
     return (destStart > sourceStart && destStart < sourceEnd) ||
             (destEnd > sourceStart && destEnd < sourceEnd);
 }
 
+unittest
+{
+    assert(!overlaps(1, 2, 3, 4));
+    assert(!overlaps(1, 1, 2, 2));
+    assert(!overlaps(0, 1, 2, 2));
+    assert(overlaps(0, 4, 2, 3));
+    assert(overlaps(0, 3, 2, 4));
+    assert(overlaps(0, 1, 1, 3));
+    assert(overlaps(0, 0, 0, 0));
+}
+
 /// Struct user as Gap Buffer
-struct GapBuffer
+struct GapBuffer (CharT)
+    if (isSomeChar!CharT)
 {
     // I'll be using both until I determine what is better for
     // the editor buffer use case
@@ -37,11 +56,11 @@ public:
     ulong reallocCount;
 
 private:
-    alias asArray = to!(char[]);
-    char[] buffer = null;
-    Array!char libArray;
-    long gapStart;
-    long gapEnd;
+    alias asArray = to!(dchar[]);
+    dchar[] buffer = null;
+    Array!dchar libArray;
+    ulong gapStart;
+    ulong gapEnd;
     ulong _configuredGapSize;
 
     // TODO: increase gap size to something bigger
@@ -55,9 +74,9 @@ private:
         }
 
         _configuredGapSize = gapSize;
-        // TODO: speed test the replicate vs a simple new char[configuredGapSize]
-        buffer = replicate(['-'], configuredGapSize) ~ asArray(text);
-        //libArray = Array!char(asArray(text));
+        // TODO: speed test the replicate vs a simple new dchar[configuredGapSize]
+        buffer = replicate(['-'.to!dchar], configuredGapSize) ~ asArray(text);
+        //libArray = Array!dchar(asArray(text));
         gapStart = 0;
         gapEnd = _configuredGapSize;
     }
@@ -96,7 +115,7 @@ private:
             scope gb = GapBuffer(text, 2);
             assert(gb.content == text);
             assert(gb.contentBeforeCursor.length == 0);
-            assert(gb.contentAfterGap == text);
+            assert(gb.contentAfterGap.to!string == text);
             assert(gb.reallocCount == 0);
         }
 
@@ -114,7 +133,7 @@ private:
         writeln("Text content:");
         writeln(content);
         writeln("Full buffer: ");
-        writeln(buffer.to!string);
+        writeln(buffer);
         foreach (_; buffer[0 .. gapStart])
         {
             write(" ");
@@ -138,13 +157,13 @@ private:
         return to!string(contentBeforeCursor ~ contentAfterGap);
     }
     pragma(inline):
-    @property private char[] contentBeforeCursor()
+    @property private dchar[] contentBeforeCursor()
     {
         return buffer[0..gapStart];
     }
 
     pragma(inline):
-    @property private char[] contentAfterGap()
+    @property private dchar[] contentAfterGap()
     {
         return buffer[gapEnd .. $];
     }
@@ -179,8 +198,7 @@ private:
         return _configuredGapSize;
     }
 
-    // FIXME: rename to configuredGapSize
-    // FIXME: document that this will case a reallocation
+    // FIXME: document that this will cause a reallocation
     pragma(inline):
     @property  public void configuredGapSize(ulong newSize)
     {
@@ -280,20 +298,20 @@ private:
             scope gb = GapBuffer(text);
             assert(gb.contentLength == 10);
             assert(gb.cursorPos == 0);
-            assert(gb.contentAfterGap == text);
+            assert(gb.contentAfterGap.to!string == text);
 
             gb.cursorPos = 5;
             assert(gb.contentLength == 10);
             assert(gb.cursorPos == 5);
             assert(gb.contentBeforeCursor == "12345");
-            assert(gb.contentAfterGap == "67890");
+            assert(gb.contentAfterGap.to!string == "67890");
 
             gb.cursorPos(10000).assertThrown;
             gb.cursorPos(-10000).assertThrown;
 
             gb.cursorPos(0);
             assert(gb.cursorPos == 0);
-            assert(gb.contentAfterGap == text);
+            assert(gb.contentAfterGap.to!string == text);
         }
 
 
@@ -303,9 +321,9 @@ private:
             return;
 
         // TODO: test if this gives any real speed over always doing the dup
-        immutable long charsToCopy = min(count, buffer.length - gapEnd);
-        long newGapStart = gapStart + charsToCopy;
-        long newGapEnd = gapEnd + charsToCopy;
+        immutable ulong charsToCopy = min(count, buffer.length - gapEnd);
+        ulong newGapStart = gapStart + charsToCopy;
+        ulong newGapEnd = gapEnd + charsToCopy;
 
         if (overlaps(gapStart, newGapStart, gapEnd, newGapEnd)) {
             buffer[gapStart..newGapStart] = buffer[gapEnd..newGapEnd].dup;
@@ -328,9 +346,9 @@ private:
         if (count <= 0 || buffer.length == 0 || gapStart == 0)
             return;
 
-        immutable long charsToCopy = min(count, gapStart);
-        long newGapStart = gapStart - charsToCopy;
-        long newGapEnd = gapEnd - charsToCopy;
+        immutable ulong charsToCopy = min(count, gapStart);
+        ulong newGapStart = gapStart - charsToCopy;
+        ulong newGapEnd = gapEnd - charsToCopy;
 
         // TODO: test if this gives any real speed over always doing the dup
         if (overlaps(newGapEnd, gapEnd, newGapStart, gapStart)) {
@@ -375,8 +393,7 @@ private:
      * Params:
      *     count = the numbers of chars to delete.
      */
-    // TODO: @system unittest
-    public void deleteLeft(long count)
+    public void deleteLeft(ulong count)
     {
         if (buffer.length == 0 || gapStart == 0)
             return;
@@ -391,8 +408,7 @@ private:
       * Params:
       *     count = the number of chars to delete.
       */
-    // TODO: @system unittest
-    public void deleteRight(long count)
+    public void deleteRight(ulong count)
     {
         if (buffer.length == 0 || gapEnd + 1 == buffer.length)
             return;
@@ -464,7 +480,7 @@ private:
         // TODO: benchmark vs insertInPlace
         buffer = buffer[0..contentBeforeCursor.length] ~
                          charText ~
-                         replicate(['-'], _configuredGapSize) ~
+                         replicate(['-'.to!dchar], _configuredGapSize) ~
                          contentAfterGap;
         gapStart += charText.length;
         gapEnd = buffer.length - oldContentAfterGapLen;
