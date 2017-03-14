@@ -1,8 +1,10 @@
-### (Future) Neme test editor (or library, or whatever)
+### Future home of the Neme text editor
+
+![idiotez](https://i.imgflip.com/1le4it.jpg)
 
 I've just started to work on this so there isn't really nothing usable.
 
-The long term plan for this repo is to contain the Neme text editor 
+The World Domination Plan for this repo is to contain the Neme text editor 
 (Neme = NEw Modal Editor). As the name implies, I'm going to explore 
 new ways to do modal editing. When one says "modal editor" Vi/Vim 
 automatically comes to mind because there isn't really much beyond it, 
@@ -17,5 +19,5 @@ use today.
 
 For the moment I'm just toying around with different languages (currently D) 
 and my short term plan is to implement a library with several text manipulation
-data structures (rope, line list, gap buffer) and a library on top of them
+data structures (line list, gap buffer, a bastard son of both, etc) and another library on top of them
 implementing text-manipulation primitives.
