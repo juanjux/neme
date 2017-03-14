@@ -1,12 +1,26 @@
 {
 	"name": "neme",
 	"authors": [
-		"juanjux"
+		"Juanjo Alvarez <juanjo@juanjoalvarez.net>"
 	],
 	"description": "Some day this will be an editor",
 	"copyright": "Copyright © 2017, Juan Jose Alvarez Martinez",
 	"license": "GPL3",
+	"version": "0.0.1",
 	"buildTypes": {},
 	"targetType": "executable",
-	"configurations": []
+	"mainSourceFile": "./source/app.d",
+    "buildRequirements": ["requireBoundsCheck"],
+	"subPackages": [
+	    "./source/backend/d/gapbuffer.d"
+	],
+	"dependencies": {
+	},
+	"configurations": [
+        {
+            "name": "default",
+            "targetType": "executable",
+            "platforms": ["posix"],
+        }
+	]
 }

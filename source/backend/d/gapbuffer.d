@@ -1,23 +1,29 @@
 module gapbuffer;
 
-// TODO: import cleanup
 import std.algorithm.comparison : max, min;
-import std.array : join, replicate, appender, insertInPlace, minimallyInitializedArray;
+import std.array : appender, insertInPlace, join, minimallyInitializedArray, replicate;
 import std.container.array : Array;
 import std.conv;
+import std.exception: assertNotThrown, assertThrown, enforce;
 import std.stdio;
 import std.typecons: Flag;
-import std.exception: mayPointTo, doesPointTo;
 
+// TODO: add contentBeforeCursor and contentAfterCursor that call
+// contentBefore/AfterGap but converting to string (or other immutable type)
 // TODO: text with the libArray too
-// TODO: Make it work with unicode codepoints
+// FIXME: Make it work with unicode codepoints
 // TODO: Make it a template AnyText
+// TODO: Methods to move the cursor to the start or end, maybe with optimized copy
+// TODO: attributes, safe, nothrow, pure, etc
+// TODO: support optionally increasing the gap size on every reallocation
+// TODO: add a demo mode (you type but the buffer representation is shown in
+//       real time as you type or move the cursor)
 
 pragma(inline):
 private bool overlaps(ulong destStart, ulong destEnd,
                         ulong sourceStart, ulong sourceEnd)
 {
-    writeln(destStart, ",", destEnd, ",", sourceStart, ",", sourceEnd);
+    // TODO: unittest
     return (destStart > sourceStart && destStart < sourceEnd) ||
             (destEnd > sourceStart && destEnd < sourceEnd);
 }
@@ -25,38 +31,84 @@ private bool overlaps(ulong destStart, ulong destEnd,
 /// Struct user as Gap Buffer
 struct GapBuffer
 {
-    alias asArray = to!(char[]);
-
-    // I'll be using both until I determine what is better for 
+    // I'll be using both until I determine what is better for
     // the editor buffer use case
+public:
+    ulong reallocCount;
+
 private:
+    alias asArray = to!(char[]);
     char[] buffer = null;
     Array!char libArray;
     long gapStart;
     long gapEnd;
-    ulong initialGapSize;
+    ulong _configuredGapSize;
 
     // TODO: increase gap size to something bigger
     /// Constructor that takes a string as the inital contents
     public this(string text, ulong gapSize = 100)
     {
-        initialGapSize = gapSize;
-        // TODO: speed test the replicate vs a simple new char[initialGapSize]
-        buffer = replicate(['-'], initialGapSize) ~ asArray(text);
-        libArray = Array!char(asArray(text));
-        gapStart = 0;
-        gapEnd = initialGapSize;
-    }
+        enforce(gapSize > 1, "Minimum gap size must be greater than 1");
 
-    /** Print the raw contents of the buffer and a guide line below with the 
+        if (text == null) {
+            text = "";
+        }
+
+        _configuredGapSize = gapSize;
+        // TODO: speed test the replicate vs a simple new char[configuredGapSize]
+        buffer = replicate(['-'], configuredGapSize) ~ asArray(text);
+        //libArray = Array!char(asArray(text));
+        gapStart = 0;
+        gapEnd = _configuredGapSize;
+    }
+        @system unittest
+        {
+            /// test null
+            scope GapBuffer gb;
+            GapBuffer("", 0).assertThrown;
+            GapBuffer("", 1).assertThrown;
+        }
+        @system unittest
+        {
+            scope GapBuffer gb;
+            assertNotThrown(gb = GapBuffer("", 1000_000));
+        }
+        ///
+        @system unittest
+        {
+            scope gb = GapBuffer("", 2);
+            assert(gb.buffer != null);
+            assert(gb.buffer.length == 2);
+        }
+        @system unittest
+        {
+            scope gb = GapBuffer(null, 2);
+            assert(gb.buffer.length == 2);
+            assert(gb.content == "");
+            assert(gb.content.length == 0);
+            assert(gb.contentAfterGap.length == 0);
+            assert(gb.reallocCount == 0);
+        }
+        ///
+        @system unittest
+        {
+            string text = "init with text";
+            scope gb = GapBuffer(text, 2);
+            assert(gb.content == text);
+            assert(gb.contentBeforeCursor.length == 0);
+            assert(gb.contentAfterGap == text);
+            assert(gb.reallocCount == 0);
+        }
+
+    /** Print the raw contents of the buffer and a guide line below with the
      *  position of the start and end positions of the gap
      */
     public void debugContent()
     {
         writeln("gapstart: ", gapStart, " gapend: ", gapEnd, " len: ", buffer.length,
-                " currentGapSize: ", currentGapSize, " initialGapSize: ", initialGapSize);
+                " currentGapSize: ", currentGapSize, " configuredGapSize: ", configuredGapSize);
         writeln("BeforeGap: ");
-        writeln(contentBeforeGap);
+        writeln(contentBeforeCursor);
         writeln("AfterGap:");
         writeln(contentAfterGap);
         writeln("Text content:");
@@ -76,20 +128,19 @@ private:
         writeln;
     }
 
-    /** 
+    /**
      * Retrieve the contents of the buffer.
      * Returns: The content of the buffer, as string.
      */
     pragma(inline):
     @property public string content()
     {
-        return to!string(contentBeforeGap ~ contentAfterGap);
+        return to!string(contentBeforeCursor ~ contentAfterGap);
     }
-
     pragma(inline):
-    @property private char[] contentBeforeGap()
+    @property private char[] contentBeforeCursor()
     {
-        return buffer[0 .. gapStart];
+        return buffer[0..gapStart];
     }
 
     pragma(inline):
@@ -97,38 +148,162 @@ private:
     {
         return buffer[gapEnd .. $];
     }
+        ///
+        @system unittest
+        {
+            string text = "initial text";
+            scope gb = GapBuffer(text);
+            gb.cursorForward(7);
+            assert(gb.content == text);
+            assert(gb.contentBeforeCursor == "initial");
+            assert(gb.contentAfterGap == " text");
+            gb.addText(" inserted stuff");
+            assert(gb.reallocCount == 0);
+            assert(gb.content == "initial inserted stuff text");
+            assert(gb.contentBeforeCursor == "initial inserted stuff");
+            assert(gb.contentAfterGap == " text");
+        }
 
 
     // TODO: keep this calculated updating the total every time there
     // is an insertion or deletion (keept this as an invariant check for the class)
     pragma(inline):
-    @property private long currentGapSize()
+    @property private ulong currentGapSize()
     {
-        return buffer.length - contentBeforeGap.length - contentAfterGap.length;
+        return buffer.length - contentBeforeCursor.length - contentAfterGap.length;
+    }
+    // FIXME: rename to configuredGapSize
+    pragma(inline):
+    @property public ulong configuredGapSize()
+    {
+        return _configuredGapSize;
     }
 
+    // FIXME: rename to configuredGapSize
+    // FIXME: document that this will case a reallocation
     pragma(inline):
-    @property public ulong gapSize()
+    @property  public void configuredGapSize(ulong newSize)
     {
-        return initialGapSize;
-    }
-
-    pragma(inline):
-    @property  public void gapSize(ulong newSize)
-    {
-        import std.exception: enforce;
         enforce(newSize > 1, "Minimum gap size must be greater than 1");
-        initialGapSize = newSize;
-        reallocate("", true);
+        _configuredGapSize = newSize;
+        reallocate("");
+    }
+        @system unittest
+        {
+            scope gb = GapBuffer("", 50);
+            assert(gb.configuredGapSize == 50);
+            assert(gb.currentGapSize == gb.configuredGapSize);
+            auto newtext = "Some text to delete";
+            gb.addText(newtext);
+
+            // New text if written on the gap so its size should be reduced
+            assert(gb.currentGapSize == gb.configuredGapSize - newtext.length);
+            assert(gb.reallocCount == 0);
+        }
+        @system unittest
+        {
+            scope gb = GapBuffer("Some text to delete", 50);
+            // Deleting should recover space from the gap
+            auto prevCurSize = gb.currentGapSize;
+            gb.deleteRight(10);
+            assert(gb.currentGapSize == prevCurSize + 10);
+            assert(gb.content == "to delete");
+            assert(gb.reallocCount == 0);
+        }
+        @system unittest
+        {
+            // Same to the left, if we move the cursor to the left of the text to delete
+            scope gb = GapBuffer("Some text to delete", 50);
+            auto prevCurSize = gb.currentGapSize;
+            gb.cursorForward(10);
+            gb.deleteLeft(10);
+            assert(gb.currentGapSize == prevCurSize + 10);
+            assert(gb.content == "to delete");
+            assert(gb.reallocCount == 0);
+            // TODO: assign to configuredGapSize to force a reallocation
+        }
+        ///
+        @system unittest
+        {
+            // Reassign to configuredGapSize. Should reallocate.
+            scope gb = GapBuffer("Some text", 50);
+            gb.cursorForward(5);
+            assert(gb.contentBeforeCursor == "Some ");
+            assert(gb.contentAfterGap == "text");
+            auto prevBufferLen = gb.buffer.length;
+
+            gb.configuredGapSize = 100;
+            assert(gb.reallocCount == 1);
+            assert(gb.buffer.length == prevBufferLen + 50);
+            assert(gb.currentGapSize == 100);
+            assert(gb.content == "Some text");
+            assert(gb.contentBeforeCursor == "Some ");
+            assert(gb.contentAfterGap == "text");
+        }
+
+    pragma(inline):
+    @property public ulong contentLength()
+    {
+        // this.content does a conversion so this is faster than
+        // this.content.length
+        return contentBeforeCursor.length + contentAfterGap.length;
     }
 
-    public void cursorForward(long count)
+    /**
+     * Returns the cursor position (the gapStart)
+     */
+    pragma(inline):
+    @property public ulong cursorPos() const
     {
-        if (buffer.length == 0 || gapEnd + 1 == buffer.length)
+        return gapStart;
+    }
+
+    /**
+     * Sets the cursor position. The position is relative to
+     * the text and ignores the gap
+     */
+    pragma(inline):
+    @property public void cursorPos(ulong pos)
+    {
+        enforce(pos >= 0 && pos < contentLength);
+        if (cursorPos > pos) {
+            cursorBackward(cursorPos - pos);
+        } else {
+            cursorForward(pos - cursorPos);
+        }
+    }
+
+        ///
+        unittest
+        {
+            auto text = "1234567890";
+            scope gb = GapBuffer(text);
+            assert(gb.contentLength == 10);
+            assert(gb.cursorPos == 0);
+            assert(gb.contentAfterGap == text);
+
+            gb.cursorPos = 5;
+            assert(gb.contentLength == 10);
+            assert(gb.cursorPos == 5);
+            assert(gb.contentBeforeCursor == "12345");
+            assert(gb.contentAfterGap == "67890");
+
+            gb.cursorPos(10000).assertThrown;
+            gb.cursorPos(-10000).assertThrown;
+
+            gb.cursorPos(0);
+            assert(gb.cursorPos == 0);
+            assert(gb.contentAfterGap == text);
+        }
+
+
+    public void cursorForward(ulong count)
+    {
+        if (count <= 0 || buffer.length == 0 || gapEnd + 1 == buffer.length)
             return;
 
         // TODO: test if this gives any real speed over always doing the dup
-        long charsToCopy = min(count, buffer.length - gapEnd);
+        immutable long charsToCopy = min(count, buffer.length - gapEnd);
         long newGapStart = gapStart + charsToCopy;
         long newGapEnd = gapEnd + charsToCopy;
 
@@ -142,20 +317,18 @@ private:
         gapEnd = newGapEnd;
     }
 
-    /** 
-     * Moves the cursor backwards, copying the text left to the right to the 
+    /**
+     * Moves the cursor backwards, copying the text left to the right to the
      * right side of the buffer.
      * Params:
      *     count = the number of places to move to the left.
      */
-    public void cursorBackward(long count)
+    public void cursorBackward(ulong count)
     {
-        // FIXME: log
-        if (buffer.length == 0 || gapStart == 0)
+        if (count <= 0 || buffer.length == 0 || gapStart == 0)
             return;
 
-        // TODO: overlap detection to avoid using the tmp
-        long charsToCopy = min(count, gapStart);
+        immutable long charsToCopy = min(count, gapStart);
         long newGapStart = gapStart - charsToCopy;
         long newGapEnd = gapEnd - charsToCopy;
 
@@ -170,13 +343,39 @@ private:
         gapEnd = newGapEnd;
     }
 
+        ///
+        unittest
+        {
+            auto text = "Some initial text";
+            scope gb = GapBuffer(text);
+            assert(gb.cursorPos == 0);
+
+            gb.cursorForward(5);
+            assert(gb.cursorPos == 5);
+            assert(gb.contentBeforeCursor == "Some ");
+            assert(gb.contentAfterGap == "initial text");
+
+            gb.cursorForward(10_000);
+            assert(gb.cursorPos == text.length);
+
+            gb.cursorBackward(4);
+            assert(gb.cursorPos == gb.content.length - 4);
+            assert(gb.contentBeforeCursor == "Some initial ");
+            assert(gb.contentAfterGap == "text");
+
+            auto prevCurPos = gb.cursorPos;
+            gb.cursorForward(0);
+            assert(gb.cursorPos == prevCurPos);
+        }
+
     /**
      * Delete count chars to the left of the cursor position, moving it back (typically
      * the effect of the backspace key).
      *
-     * Params: 
+     * Params:
      *     count = the numbers of chars to delete.
      */
+    // TODO: @system unittest
     public void deleteLeft(long count)
     {
         if (buffer.length == 0 || gapStart == 0)
@@ -185,13 +384,14 @@ private:
         gapStart = max(gapStart - count, 0);
     }
 
-    /** 
+    /**
       * Delete count chars to the right of the cursor position, keeping it in place
       *  (typically the effect of the del key).
       *
       * Params:
       *     count = the number of chars to delete.
       */
+    // TODO: @system unittest
     public void deleteRight(long count)
     {
         if (buffer.length == 0 || gapEnd + 1 == buffer.length)
@@ -200,7 +400,6 @@ private:
         gapEnd = min(gapEnd + count, buffer.length);
     }
 
-    // TODO: support increasing the gap size on every reallocation
     /**
      * Adds text, moving the cursor to the end of the new text. Could cause
      * a reallocation of the buffer.
@@ -209,7 +408,7 @@ private:
      */
     public void addText(string text)
     {
-        auto arrayText = asArray(text);
+        immutable arrayText = asArray(text);
         if (arrayText.length >= currentGapSize) {
             // doesnt fill in the gap, reallocate the buffer adding the text
             reallocate(text);
@@ -219,6 +418,31 @@ private:
             gapStart = newGapStart;
         }
     }
+        @system unittest
+        {
+            scope gb = GapBuffer("", 100);
+            gb.addText("some added text");
+            assert(gb.content == "some added text");
+            assert(gb.contentAfterGap == "");
+            assert(gb.contentBeforeCursor == "some added text");
+            assert(gb.reallocCount == 0);
+        }
+        @system unittest
+        {
+            scope gb = GapBuffer("", 10);
+            // text is bigger than gap size so it should reallocate
+            gb.addText("some added text");
+            assert(gb.reallocCount == 1);
+            assert(gb.content == "some added text");
+        }
+        @system unittest
+        {
+            scope gb = GapBuffer("", 10);
+            auto prevBufferSize = gb.buffer.length;
+            assertNotThrown(gb.addText(null));
+            assert(prevBufferSize == gb.buffer.length);
+        }
+        // TODO: check gapStart and gapEnd
 
     // Reallocates the buffer, creating a new gap of the configured size.
     // If the textToAdd parameter is used it will be added just before the start of
@@ -228,20 +452,55 @@ private:
     // Params:
     //  textToAdd: when reallocating, add this text before/after the gap (or cursor)
     //      depending on the textDir parameter.
-    public void reallocate(string textToAdd="", bool forceRecreateGap=false)
+
+    public void reallocate(string textToAdd="")
     {
         if (textToAdd == null) {
             textToAdd = "";
         }
 
-        auto charText = asArray(textToAdd);
+        immutable charText = asArray(textToAdd);
         immutable oldContentAfterGapLen = contentAfterGap.length;
-        auto newbuffer = buffer[0..contentBeforeGap.length] ~ 
+        // TODO: benchmark vs insertInPlace
+        buffer = buffer[0..contentBeforeCursor.length] ~
                          charText ~
-                         replicate(['-'], initialGapSize) ~
+                         replicate(['-'], _configuredGapSize) ~
                          contentAfterGap;
-        buffer = newbuffer;
         gapStart += charText.length;
         gapEnd = buffer.length - oldContentAfterGapLen;
+        reallocCount += 1;
     }
+        @system unittest
+        {
+            scope gb = GapBuffer("Some text");
+            gb.cursorForward(5);
+            auto prevGapSize = gb.currentGapSize;
+            auto prevGapStart = gb.gapStart;
+            auto prevGapEnd = gb.gapEnd;
+
+            gb.reallocate("");
+            assert(gb.reallocCount == 1);
+            assert(gb.currentGapSize == prevGapSize);
+            assert(prevGapStart == gb.gapStart);
+            assert(prevGapEnd == gb.gapEnd);
+        }
+        @system unittest
+        {
+            scope gb = GapBuffer("Some text");
+            gb.cursorForward(4);
+
+            auto prevGapSize = gb.currentGapSize;
+            auto prevBufferLen = gb.buffer.length;
+            auto prevGapStart = gb.gapStart;
+            auto prevGapEnd = gb.gapEnd;
+
+            auto newtext = " and some new text";
+            gb.reallocate(" and some new text");
+            assert(gb.reallocCount == 1);
+            assert(gb.buffer.length == prevBufferLen + newtext.length);
+            assert(gb.currentGapSize == prevGapSize);
+            assert(gb.content == "Some and some new text text");
+            assert(gb.gapStart == prevGapStart + newtext.length);
+            assert(gb.gapEnd == prevGapEnd + newtext.length);
+        }
 }

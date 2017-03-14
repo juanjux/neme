@@ -5,6 +5,7 @@ import std.stdio;
 
 void main()
 {
+    /*
     auto text = "Lorem ipsum blabla";
     auto gBuffer = GapBuffer(text);
 
@@ -71,14 +72,14 @@ void main()
     writeln("\n=== Reallocate with with new text ===");
     gBuffer.reallocate("||MORE NEW TEXT||");
     gBuffer.debugContent();
-    
+
     writeln("\n=== Adding text smaller than the gap ===");
     gBuffer.addText("||Added with addtext||");
     gBuffer.debugContent();
 
     // Make a small gap easy to fill and reallocate
     writeln("\n=== Decreasing gap size and reallocationg ===");
-    gBuffer.gapSize = 5;
+    gBuffer.configuredGapSize = 5;
     gBuffer.debugContent();
     // Now write something bigger
     gBuffer.addText("||polompos pok||");
@@ -91,4 +92,5 @@ void main()
     writeln("\n=== Move cursor forward 1000 ===");
     gBuffer.cursorForward(1000);
     gBuffer.debugContent();
+    */
 }
