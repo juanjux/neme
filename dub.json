@@ -9,18 +9,12 @@
 	"version": "0.0.1",
 	"buildTypes": {},
 	"targetType": "executable",
-	"mainSourceFile": "./source/app.d",
+	"mainSourceFile": "source/app.d",
     "buildRequirements": ["requireBoundsCheck"],
-	"subPackages": [
-	    "./source/backend/d/gapbuffer.d"
-	],
+    "importPaths": ["source", "source/backend/d"],
+    "sourcePaths": ["source", "source/backend/d"],
+	"subPackages": [],
+	"excludedSourceFiles": ["source/backend/d/discarded.d"],
 	"dependencies": {
 	},
-	"configurations": [
-        {
-            "name": "default",
-            "targetType": "executable",
-            "platforms": ["posix"],
-        }
-	]
 }
