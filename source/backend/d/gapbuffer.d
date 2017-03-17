@@ -212,6 +212,26 @@ private:
             assert(gb.contentAfterCursor == " text");
         }
 
+    @system unittest
+    {
+        StringT text = "¡Hola mundo! Aquí estamos en España!";
+        scope gb = GapBuffer(text);
+        assert(gb.content == text);
+        gb.cursorForward(1);
+        gb.debugContent;
+        gb.cursorForward(4);
+        gb.debugContent;
+        //assert(gb.content == text);
+        //assert(gb.contentBeforeCursor == "initial");
+        //assert(gb.contentAfterCursor == " text");
+        //gb.addText(" inserted stuff");
+        //assert(gb.reallocCount == 0);
+        //assert(gb.content == "initial inserted stuff text");
+        //assert(gb.contentBeforeCursor == "initial inserted stuff");
+        //assert(gb.contentAfterCursor == " text");
+
+    }
+
 
     pragma(inline)
     @property private ulong currentGapSize()
