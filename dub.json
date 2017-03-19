@@ -16,5 +16,5 @@
 	"subPackages": [],
 	"excludedSourceFiles": ["source/backend/d/discarded.d"],
 	"dependencies": {
-	},
+	}
 }
