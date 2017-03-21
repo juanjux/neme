@@ -14,8 +14,6 @@ debug {
     import std.array: replicate;
 }
 
-// TODO: methods to get const refs to contentBeforeGap and contentAfterGap
-
 // TODO: Implement the range interface(s)
 
 // TODO: add a demo mode (you type but the buffer representation is shown in
@@ -25,21 +23,22 @@ debug {
 
 // TODO: benchmark against implementations in other languages
 
-// TODO: ref parameters/ returns?
-
-// TODO: attributes, safe, nothrow, pure, etc
+// TODO: explicit attributes, safe, nothrow, pure, etc
 
 // TODO: add a "fastclear()": if buffer.length > newText, without reallocation. This will
 // overwrite the start with the new text and then extend the gap from the end of
 // the new text to the end of the buffer
 
 
-/// Struct user as Gap Buffer. It uses dchar internally because it's much easier and probably faster
-/// to deal with unicode chars that way since array indices and slices are just direct since
-/// 1 dchar = 1 unicode char without having to use libraries to get the indices of code points
-/// The template parameter StringT is only used for construction; other methods taking or
-/// returning a string are individually parametrized so you can create a GapBuffer with a string
-/// type but extract others.
+/**
+ * Struct user as Gap Buffer. It uses dchar (UTF32) characters internally for easier and
+ * probably faster dealing with unicode chars since 1 dchar = 1 unicode char and slices are just direct indexes
+ * without having to use libraries to get the indices of code points.
+ * Params:
+ * The template parameter StringT is only used for the text passed to the constructor since internally dchar
+ * will be used
+ * XXX remove the StringT param, the user just have to convert to dchar
+ */
 struct GapBuffer(StringT=string)
     if(is(StringT == string) || is(StringT == wstring) || is(StringT == dstring))
 {
