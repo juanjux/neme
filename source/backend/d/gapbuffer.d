@@ -8,6 +8,7 @@ import std.conv;
 import std.exception: assertNotThrown, assertThrown, enforce;
 import std.stdio;
 import std.traits;
+import std.uni: normalize, NFC;
 import std.utf;
 
 debug {
@@ -51,8 +52,6 @@ public:
 
 
 private:
-    alias asArray = to!(dchar[]);
-
     dchar[] buffer = null;
     ulong gapStart;
     ulong gapEnd;
@@ -67,6 +66,7 @@ private:
 
         clear(text, false);
     }
+
         @system unittest
         {
             /// test null
@@ -81,7 +81,7 @@ private:
         ///
         @system unittest
         {
-            immutable gb = GapBuffer("", 2);
+            auto gb = GapBuffer("", 2);
             assert(gb.buffer != null);
             assert(gb.buffer.length == 2);
         }
@@ -104,6 +104,14 @@ private:
             assert(gb.contentAfterGap.to!string == text);
             assert(gb.reallocCount == 0);
         }
+
+
+    pragma(inline)
+    private dchar[] asArray(StrT = string)(StrT str)
+        if(is(StrT == string) || is(StrT == wstring) || is(StrT == dstring))
+    {
+        return normalize!NFC(to!(dchar[])(str));
+    }
 
     pragma(inline)
     dchar[] createNewGap(ulong gapSize=0)
@@ -267,7 +275,7 @@ private:
     {
         enforce(newSize > 1, "Minimum gap size must be greater than 1");
         _configuredGapSize = newSize;
-        reallocate("");
+        reallocate();
     }
         @system unittest
         {
@@ -478,19 +486,23 @@ private:
      * Params:
      *     text = text to add.
      */
-    public void addText(StringT=string)(StringT text)
-        if(is(StringT == string) || is(StringT == wstring) || is(StringT == dstring))
+    public void addText(dchar[] text)
     {
-        immutable arrayText = asArray(text);
-
-        if (arrayText.length >= currentGapSize) {
+        if (text.length >= currentGapSize) {
             // doesnt fill in the gap, reallocate the buffer adding the text
             reallocate(text);
         } else {
-            auto newGapStart = gapStart + arrayText.length;
-            arrayText.copy(buffer[gapStart..newGapStart]);
+            auto newGapStart = gapStart + text.length;
+            text.copy(buffer[gapStart..newGapStart]);
             gapStart = newGapStart;
         }
+    }
+
+    pragma(inline)
+    public void addText(StrT=string)(StrT text)
+        if(is(StrT == string) || is(StrT == wstring) || is(StrT == dstring))
+    {
+        addText(asArray(text));
     }
         @system unittest
         {
@@ -542,21 +554,24 @@ private:
      * more efficient than clearing and then calling addText with the new
      * text
      */
-    public void clear(StringT=string)(StringT text="", bool moveToEndEnd=true)
+    public void clear(dchar[] text=null, bool moveToEndEnd=true)
     {
-        if (text == null) {
-            text = "";
-        }
-        auto charText = asArray(text);
         if (moveToEndEnd) {
-            buffer = charText ~ createNewGap();
-            gapStart = charText.length;
+            buffer = text ~ createNewGap();
+            gapStart = text.length;
             gapEnd = buffer.length;
         } else {
-            buffer = createNewGap() ~ charText;
+            buffer = createNewGap() ~ text;
             gapStart = 0;
             gapEnd = _configuredGapSize;
         }
+    }
+
+    pragma(inline)
+    public void clear(StrT=string)(StrT text="", bool moveToEndEnd=true)
+        if(is(StrT == string) || is(StrT == wstring) || is(StrT == dstring))
+    {
+        clear(asArray(text), moveToEndEnd);
     }
 
         /// clear without text
@@ -612,15 +627,8 @@ private:
     //  textToAdd: when reallocating, add this text before/after the gap (or cursor)
     //      depending on the textDir parameter.
 
-    public void reallocate(StringT=string)(StringT textToAdd="")
-        if(is(StringT == string) || is(StringT == wstring) || is(StringT == dstring))
+    private void reallocate(dchar[] textToAdd=null)
     {
-        // FIXME: make this private
-        if (textToAdd == null) {
-            textToAdd = "";
-        }
-
-        immutable charText = asArray(textToAdd);
         immutable oldContentAfterGapLen = contentAfterGap.length;
 
         // Check if the actual size of the gap is smaller than configuredSize
@@ -635,10 +643,17 @@ private:
             gapExtensionCount += 1;
         }
 
-        buffer.insertInPlace(gapStart, charText, gapExtension);
-        gapStart += charText.length;
+        buffer.insertInPlace(gapStart, textToAdd, gapExtension);
+        gapStart += textToAdd.length;
         gapEnd = buffer.length - oldContentAfterGapLen;
         reallocCount += 1;
+    }
+
+    pragma(inline)
+    private void reallocate(StrT=string)(StrT textToAdd)
+        if(is(StrT == string) || is(StrT == wstring) || is(StrT == dstring))
+    {
+        reallocate(asArray(textToAdd));
     }
         @system unittest
         {
@@ -648,7 +663,7 @@ private:
             immutable prevGapStart = gb.gapStart;
             immutable prevGapEnd = gb.gapEnd;
 
-            gb.reallocate("");
+            gb.reallocate();
             assert(gb.reallocCount == 1);
             assert(gb.currentGapSize == prevGapSize);
             assert(prevGapStart == gb.gapStart);

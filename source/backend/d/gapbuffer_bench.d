@@ -165,7 +165,7 @@ private void bench_appendarray(uint iterations)
 
 void bench()
 {
-    immutable g = GapBuffer!string("");
+    auto g = GapBuffer!string("");
 
     //uint iterations = 10_000_000;
     //bench_overlaps1(iterations);
