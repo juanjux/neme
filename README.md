@@ -2,7 +2,9 @@
 
 ![idiotez](https://i.imgflip.com/1le4it.jpg)
 
-I've just started to work on this so there isn't really nothing usable.
+I've just started to work on this so there isn't really nothing usable 
+(but hey, I've a nice [gap buffer implementation](https://github.com/juanjux/neme/blob/master/source/backend/d/gapbuffer.d) 
+in D!).
 
 The World Domination Plan for this repo is to contain the Neme text editor 
 (Neme = NEw Modal Editor). As the name implies, I'm going to explore 
