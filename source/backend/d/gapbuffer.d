@@ -346,6 +346,7 @@ private:
     {
         return contentBeforeGap.length + contentAfterGap.length;
     }
+    public alias length = contentLength;
 
     /**
      * Returns the cursor position (the gapStart)
@@ -726,8 +727,16 @@ private:
             assert(gb.contentIdx2BufferIdx(4) == 4 + gapSize);
         }
 
-    // Index ([]) overloading methods
-    alias opDollar = contentLength;
+    //====================================================================
+    //
+    // Interface implementations and operators overloads
+    //
+    //====================================================================
+
+    /**
+     * $ (length) operator
+     */
+    public alias opDollar = contentLength;
 
     /**
      * index operator assignment: gapBuffer[2] = 'x';
@@ -808,7 +817,7 @@ private:
     pragma(inline)
     @property public bool empty() const
     {
-        return !contentAfterGap.length;
+        return !contentLength;
     }
 
         @system unittest
@@ -819,54 +828,56 @@ private:
             gb.cursorPos = 0;
             assert(!gb.empty);
 
-            auto gb2 = GapBuffer!string("pokompos");
-            gb2.cursorPos = gb2.contentLength;
+            auto gb2 = GapBuffer!string("");
             assert(gb2.empty);
+
+            auto gb3 = GapBuffer!string("polompos");
+            assert(!gb3.empty);
+            gb3.deleteRight(8);
+            assert(gb3.empty);
         }
 
     /**
      * Implements the front range interface. For the GapBuffer
-     * the front() is considered to be the cursor position, NOT
-     * the first textual content
+     * the front is the start of the content, NOT the content
+     * from the cursor position.
      */
     @property public ref dchar front()
     {
         assert(contentLength > 0,
                 "Attempt to fetch the front with the cursor at the end of the gapbuffer");
-        assert(contentAfterGap.length > 0,
-                "Attempt to fetch the front with the cursor at the end of the gapbuffer");
-        return buffer[gapEnd];
+        if (gapStart == 0) {
+            return buffer[gapEnd];
+        }
+        return buffer[0];
     }
         @system unittest
         {
             auto gb = GapBuffer!string("Polompos");
             assert(gb.front == 'P');
-            gb.cursorForward(1);
+            gb.deleteRight(1);
             assert(gb.front == 'o');
-            gb.cursorForward(1000);
-            // gb.front; // AssertionError
-            gb.addText(" pok");
-            gb.cursorBackward(1);
-            assert(gb.front == 'k');
-            gb.cursorPos = 0;
-            assert(gb.front == 'P');
+            gb.cursorForward(10);
+            assert(gb.front == 'o');
+            gb.deleteLeft(1);
+            assert(gb.front == 'o');
         }
 
-
     /**
-     * Implements the popFront range interface. This will delete the character to the
-     * right of the cursor. This will not delete any character to the left of the cursor.
+     * Implements the popFront range interface. This will delete the character to the first character
+     * of the buffer (not the first after the cursor). This will move the cursor to the start.
      */
     @property public void popFront()
     {
         assert(contentLength > 0,
                 "Attempt to popFront with the cursor at the end of the gapbuffer");
+        cursorPos = 0;
         deleteRight(1);
     }
 
         @system unittest
         {
-            auto gb = GapBuffer!string("Polompos");
+            auto gb = GapBuffer!string("Pok");
             auto clen = gb.contentLength;
 
             assert(gb.front == 'P');
@@ -876,15 +887,15 @@ private:
             assert(clen == gb.contentLength);
 
             gb.popFront;
+            gb.cursorForward(1); // should have no effect
             clen--;
-            assert(gb.front == 'l');
+            assert(gb.front == 'k');
             assert(clen == gb.contentLength);
 
-            gb.cursorForward(1);
             gb.popFront;
             clen--;
-            assert(gb.front == 'm');
             assert(clen == gb.contentLength);
+            assert(clen == 0);
         }
 
         /// test the InputRange interface
@@ -894,13 +905,70 @@ private:
             auto gb = GapBuffer!string(text);
 
             auto idx = 0;
-            // Using a normal for because foreach would call opApply that we also implement
             for(auto r = gb; !r.empty; r.popFront) {
-                auto e = r.front;
-                assert(e == text[idx]);
+                assert(r.front == text[idx]);
                 idx++;
             }
+            // Should not change the original text
+            assert(gb.content == "Some initial text");
         }
+
+        /// test the foreach interface
+        @system unittest
+        {
+            auto text = "Some initial text";
+            GapBuffer!string gb = GapBuffer!string(text);
+
+            ulong idx = 0;
+            foreach(dchar d; gb) {
+                assert(d == text[idx]);
+                idx++;
+            }
+            assert(gb.content == "Some initial text");
+        }
+
+    // Forward range interface
+    // TODO: return a real copy, add specific unittest
+    @property GapBuffer!StringT save()
+    {
+        return this;
+    }
+
+        /// test library functions taking an InputRange or ForwardRange
+        @system unittest
+        {
+            import std.range;
+            import std.range.primitives;
+            import std.algorithm.comparison: equal;
+
+            auto text = "Some initial text";
+            auto gb = GapBuffer!string(text);
+
+            auto text2 = " with more text"d;
+            auto gb2 = GapBuffer!dstring(text2); // different type
+
+            assert(gb.stride(2).equal("Sm nta et"));
+            assert(chain(gb, gb2).equal(gb.content ~ gb2.content));
+            assert(choose(false, gb, gb2).equal(gb2));
+            assert(chooseAmong(0, gb, gb2).equal(gb));
+            assert(roundRobin(gb, gb2).equal("S owmiet hi nmiotriea lt etxetxt"));
+            assert(gb.takeOne.equal("S"));
+            assert(gb.take(1000).equal(text));
+            assert(gb.takeExactly(4).equal("Some"));
+            assert(gb.tail(4).equal("text"));
+            assert(gb.drop(5).equal("initial text"));
+            assert(gb.dropOne.equal(text[1..$]));
+            assert(gb.repeat(2)[0].equal(text));
+            assert(gb.repeat(2)[1].equal(text));
+            assert(gb.enumerate.length == 17);
+            assert(zip(gb, gb2).length == 15);
+
+            // TODO: chunks, cycle, only, etc
+
+            //assert(isInputRange!GapBuffer);
+            //assert(isForwardRange!GapBuffer);
+        }
+
 }
 
 // This must be outside of the template-struct. If tests inside the GapBuffer
