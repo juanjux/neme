@@ -15,8 +15,6 @@ debug {
     import std.array: replicate;
 }
 
-// TODO: implement opApply and opApplyReverse
-
 // TODO: implement other range interfaces
 
 // TODO: unittest that normalize and asArray is working (with composed chars)
@@ -67,8 +65,15 @@ private:
     {
         enforce(gapSize > 1, "Minimum gap size must be greater than 1");
         _configuredGapSize = gapSize;
-
         clear(text, false);
+    }
+
+    // FIXME: generic way to avoid two constructors for StringT and dchar?
+    public this(dchar[] textarray, ulong gapSize = 100)
+    {
+        enforce(gapSize > 1, "Minimum gap size must be greater than 1");
+        _configuredGapSize = gapSize;
+        clear(textarray, false);
     }
 
         @system unittest
@@ -169,6 +174,13 @@ private:
     @property public const(dchar[]) content() const
     {
         return contentBeforeGap ~ contentAfterGap;
+    }
+
+    // Used for the save() method, returning a non const copy of the array
+    pragma(inline)
+    @property private dchar[] mutableCopyContent()
+    {
+        return content.dup;
     }
 
     /**
@@ -931,7 +943,8 @@ private:
     // TODO: return a real copy, add specific unittest
     @property GapBuffer!StringT save()
     {
-        return this;
+        auto gb = GapBuffer!StringT(this.mutableCopyContent);
+        return gb;
     }
 
         /// test library functions taking an InputRange or ForwardRange
@@ -965,8 +978,13 @@ private:
 
             // TODO: chunks, cycle, only, etc
 
-            //assert(isInputRange!GapBuffer);
-            //assert(isForwardRange!GapBuffer);
+            auto r1 = GapBuffer.init;
+            auto s1 = r1.save;
+            assert(isInputRange!GapBuffer && is(typeof(s1) == GapBuffer));
+            //writeln("XXX gb: ", typeof(gb));
+            //writeln("XXX gb2: ", typeof(gb3));
+            assert(isInputRange!GapBuffer);
+            assert(isForwardRange!GapBuffer);
         }
 
 }
