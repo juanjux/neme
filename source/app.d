@@ -1,6 +1,6 @@
-module neme;
+module neme.app;
 
-import gapbuffer_benchmark: bench;
+import neme.core.gapbuffer_bench: bench;
 import std.stdio;
 
 void main()

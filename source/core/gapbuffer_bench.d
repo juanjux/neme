@@ -1,7 +1,7 @@
-module gapbuffer_benchmark;
+module neme.core.gapbuffer_bench;
 
 import core.memory: GC;
-import gapbuffer: GapBuffer;
+import neme.core.gapbuffer: GapBuffer;
 import std.conv: to;
 import std.datetime;
 import std.stdio;

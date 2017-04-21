@@ -1,19 +1,43 @@
-module gapbuffer;
+module neme.core.gapbuffer;
 
 import std.algorithm.comparison : max, min;
-import std.algorithm: copy;
+import std.algorithm: copy, count;
 import std.array : appender, insertInPlace, join, minimallyInitializedArray;
 import std.container.array : Array;
 import std.conv;
 import std.exception: assertNotThrown, assertThrown, enforce;
 import std.stdio;
 import std.traits;
-import std.uni: normalize, NFC;
-import std.utf;
+import std.uni: byGrapheme, byCodePoint;
+import std.utf: byDchar;
 
 debug {
     import std.array: replicate;
 }
+
+/**
+ IMPORTANT terminology in this module:
+ char = the internal array type, NOT grapheme or visual character
+ grapheme = that
+
+ Also, function parameters are size_t when they refer to base array positions
+ and GrphIdx when the indexes are given in graphemes.
+
+ Some functions have a "fast path" that operate by chars and a "slow path" that
+ operate by graphemes. The path is selected by the hasCombiningChars member that
+ is updated every time text is added to the buffer to the array is reallocated
+ (currently no check is done when deleting characters for performance reasons).
+*/
+
+// The detection can be done with text.byCodePoint.count == test.byGrapheme.count
+
+// TODO: typedefs for rawIdx (for the array) and charIdx (counting graphemes)
+
+// TODO: add tests with combining chars
+
+// TODO: migrate to iteration by grapheme
+
+// TODO: check that I'm using const correctly
 
 // TODO: implement other range interfaces
 
@@ -54,10 +78,17 @@ public:
 
 
 private:
+    enum Direction { Front, Back }
     dchar[] buffer = null;
     ulong gapStart;
     ulong gapEnd;
     ulong _configuredGapSize;
+    bool hasCombiningChars = false;
+
+    // For array positions
+    alias size_t = ulong;
+    // For grapheme positions
+    alias GrphIdx = ulong;
 
     // TODO: increase gap size to something bigger
     /// Constructor that takes a StringT as the inital contents
@@ -114,12 +145,79 @@ private:
             assert(gb.reallocCount == 0);
         }
 
+    pragma(inline)
+    private void checkForMultibyteChars(T)(T text)
+    {
+        hasCombiningChars = text.byCodePoint.count != text.byGrapheme.count;
+    }
+
+    // Return the number of characters between two buffer array-indexes
+    pragma(inline)
+    private ulong graphemesBetween(size_t start, size_t end)
+    {
+        assert(end >= start);
+
+        // avoid the slow path in this case
+        if (start == end)
+            return 0;
+
+        if (hasCombiningChars) {
+            return buffer[start..end].byGrapheme.count;
+        }
+        return end - start;
+    }
+
+    unittest
+    {
+        // 17 dchars, 17 graphemes
+        auto str_a = "some ascii string"d;
+        // 20 dchars, 17 graphemes
+        auto str_c = "ññññ r̈a⃑⊥ b⃑ string"d;
+
+        auto test = "ññññ r̈a⃑⊥ b⃑ string"d;
+        auto gba = GapBuffer!dstring(str_a);
+        assert(!gba.hasCombiningChars);
+        gba.cursorPos = 9999;
+
+        auto gbc = GapBuffer!dstring(str_c);
+        assert(gbc.hasCombiningChars);
+        gbc.cursorPos = 9999;
+
+        assert(gba.graphemesBetween(0, 4) == 4);
+        assert(gbc.graphemesBetween(0, 4) == 4);
+
+        assert(gba.graphemesBetween(0, 17) == 17);
+        assert(gbc.graphemesBetween(0, 20) == 17);
+    }
+
+
+    // Return the number of dchars that numChars graphemes occupy from
+    // the given (array) position in the given direction. This doesnt checks
+    // for the gap
+    // XXX unittest
+    private size_t charsTakenByGraphemes(size_t idx, ulong numChars, Direction dir)
+    {
+        import std.range: take, tail;
+
+        // fast path
+        if (!hasCombiningChars) {
+            return numChars;
+        }
+
+        size_t charCount;
+        if (dir == Direction.Front) {
+            charCount = buffer[idx..$].byGrapheme.take(numChars).byCodePoint.count;
+        } else { // Direction.Back
+            charCount = buffer[0..idx].byGrapheme.tail(numChars).byCodePoint.count;
+        }
+        return charCount;
+    }
 
     pragma(inline)
     private dchar[] asArray(StrT = string)(StrT str)
         if(is(StrT == string) || is(StrT == wstring) || is(StrT == dstring))
     {
-        return normalize!NFC(to!(dchar[])(str));
+        return to!(dchar[])(str);
     }
 
     pragma(inline)
@@ -174,13 +272,6 @@ private:
     @property public const(dchar[]) content() const
     {
         return contentBeforeGap ~ contentAfterGap;
-    }
-
-    // Used for the save() method, returning a non const copy of the array
-    pragma(inline)
-    @property private dchar[] mutableCopyContent()
-    {
-        return content.dup;
     }
 
     /**
@@ -261,10 +352,11 @@ private:
         }
 
 
+    // Current gap size. The returned size is the number of chartype elements
+    // (NOT bytes).
     pragma(inline)
     @property private ulong currentGapSize() const
     {
-        //return buffer.length - contentBeforeGap.length - contentAfterGap.length;
         return gapEnd - gapStart;
     }
 
@@ -319,7 +411,7 @@ private:
         {
             auto gb = GapBuffer!string("123");
             gb.deleteRight(3);
-            assert(gb.contentLength == 0);
+            assert(gb.charactersCount == 0);
         }
         @system unittest
         {
@@ -351,14 +443,37 @@ private:
             assert(gb.contentAfterGap == "text");
         }
 
-    /// "this.content" does a conversion so this is faster than
-    /// this.content.length
+    /// Returns the full size of the internal buffer including the gap in bytes
+    /// For example for a GapBuffer!(string, dchar) with the content
+    /// "1234" contentSize would return 16 (4 dchars * 4 bytes each) but
+    /// contentSize would return 4 (dchars)
     pragma(inline)
-    @property public ulong contentLength() const
+    @property public ulong bufferByteSize() const
     {
+        return buffer.sizeof;
+    }
+
+    /// Returns the size, in bytes, of the textual part of the buffer without the gap
+    /// For example for a GapBuffer!(string, dchar) with the content
+    /// "1234" contentSize would return 16 (4 dchars * 4 bytes each) but
+    /// contentSize would return 4 (dchars)
+    pragma(inline)
+    @property private ulong contentByteSize() const
+    {
+        return (contentBeforeGap.length + contentAfterGap.length).sizeof;
+    }
+
+    /// Return the number of visual chars (graphemes). This number can be different
+    /// from the number of chartype elements or even unicode code points.
+    pragma(inline)
+    @property public ulong charactersCount() const
+    {
+        if(hasCombiningChars) {
+            return contentBeforeGap.byGrapheme.count + contentAfterGap.byGrapheme.count;
+        }
         return contentBeforeGap.length + contentAfterGap.length;
     }
-    public alias length = contentLength;
+    public alias length = charactersCount;
 
     /**
      * Returns the cursor position (the gapStart)
@@ -369,52 +484,19 @@ private:
         return gapStart;
     }
 
-    /**
-     * Sets the cursor position. The position is relative to
-     * the text and ignores the gap
-     */
-    pragma(inline)
-    @property public void cursorPos(ulong pos)
-    {
-        enforce(pos >= 0 && pos < contentLength + 1);
-        if (cursorPos > pos) {
-            cursorBackward(cursorPos - pos);
-        } else {
-            cursorForward(pos - cursorPos);
-        }
-    }
-
-        ///
-        @system unittest
-        {
-            string text = "1234567890";
-            auto gb = GapBuffer(text.to!StringT);
-            assert(gb.contentLength == 10);
-            assert(gb.cursorPos == 0);
-            assert(gb.contentAfterGap.to!string == text);
-
-            gb.cursorPos = 5;
-            assert(gb.contentLength == 10);
-            assert(gb.cursorPos == 5);
-            assert(gb.contentBeforeGap == "12345");
-            assert(gb.contentAfterGap == "67890");
-
-            gb.cursorPos(10_000).assertThrown;
-            gb.cursorPos(-10_000).assertThrown;
-
-            gb.cursorPos(0);
-            assert(gb.cursorPos == 0);
-            assert(gb.contentAfterGap.to!string == text);
-        }
-
-    public void cursorForward(ulong count)
+    // XXX convert
+    public void cursorForward(ulong charCount)
     {
 
-        if (count <= 0 || buffer.length == 0 || gapEnd + 1 == buffer.length)
+        if (charCount <= 0 || buffer.length == 0 || gapEnd + 1 == buffer.length)
             return;
 
-        immutable charsToCopy = min(count, buffer.length - gapEnd);
-        immutable newGapStart = gapStart + charsToCopy;
+        immutable charsToCopy = min(charCount,
+                                    graphemesBetween(gapEnd, buffer.length));
+
+        immutable newGapStart = gapStart + charsTakenByGraphemes(gapEnd, charsToCopy,
+                                                                 Direction.Back);
+        //immutable newGapStart = gapStart + charsToCopy;
         immutable newGapEnd = gapEnd + charsToCopy;
 
         buffer[gapEnd..newGapEnd].copy(buffer[gapStart..newGapStart]);
@@ -428,6 +510,7 @@ private:
      * Params:
      *     count = the number of places to move to the left.
      */
+    // XXX convert
     public void cursorBackward(ulong count)
     {
         if (count <= 0 || buffer.length == 0 || gapStart == 0)
@@ -446,29 +529,105 @@ private:
         @system unittest
         {
             string text = "Some initial text";
-            auto gb = GapBuffer(text.to!StringT);
-            auto gb2 = GapBuffer(text.to!StringT);
-            auto gb3 = GapBuffer(text.to!StringT);
+            string combtext = "r̈a⃑⊥ b⃑67890";
+            auto gb = GapBuffer!string(text);
+            auto gbc = GapBuffer!string(combtext);
+
             assert(gb.cursorPos == 0);
+            assert(gbc.cursorPos == 0);
 
             gb.cursorForward(5);
+            gbc.cursorForward(5);
+
             assert(gb.cursorPos == 5);
+            assert(gbc.cursorPos == 5);
+
+            gb.debugContent;
             assert(gb.contentBeforeGap == "Some ");
+            gbc.debugContent;
+            assert(gbc.contentBeforeGap == "r̈a⃑⊥ b⃑");
+
             assert(gb.contentAfterGap == "initial text");
+            assert(gbc.contentAfterGap == "67890");
 
             gb.cursorForward(10_000);
-            assert(gb.cursorPos == text.length);
+            gb.cursorForward(10_000);
 
-            gb.cursorBackward(4);
+            assert(gbc.cursorPos == text.length);
+            assert(gbc.cursorPos == text.length);
+
+            gbc.cursorBackward(4);
+            gbc.cursorBackward(4);
+
             assert(gb.cursorPos == gb.content.length - 4);
-            assert(gb.contentBeforeGap == "Some initial ");
-            assert(gb.contentAfterGap == "text");
+            assert(gbc.cursorPos == gb.content.length - 4);
 
+            assert(gb.contentBeforeGap == "Some initial ");
+            assert(gbc.contentBeforeGap == "r̈a⃑⊥ b⃑6");
+
+            assert(gb.contentAfterGap == "text");
+            assert(gbc.contentAfterGap == "7890");
+
+            assert(gb.cursorPos == gbc.cursorPos);
             immutable prevCurPos = gb.cursorPos;
             gb.cursorForward(0);
+            gbc.cursorForward(0);
 
-            assert(gb.cursorPos == prevCurPos);
+            assert(gbc.cursorPos == prevCurPos);
+            assert(gbc.cursorPos == prevCurPos);
         }
+    /**
+     * Sets the cursor position. The position is relative to
+     * the text and ignores the gap
+     */
+    pragma(inline)
+    @property public void cursorPos(ulong pos)
+    {
+        enforce(pos >= 0 && pos < charactersCount + 1);
+        if (cursorPos > pos) {
+            cursorBackward(cursorPos - pos);
+        } else {
+            cursorForward(pos - cursorPos);
+        }
+    }
+
+        ///
+        @system unittest
+        {
+            string text = "1234567890";
+            string combtext = "r̈a⃑⊥ b⃑67890";
+            auto gb  = GapBuffer(text.to!StringT);
+            auto gbc = GapBuffer(combtext.to!StringT);
+            assert(gbc.charactersCount == 10);
+            assert(gbc.charactersCount == 10);
+
+            assert(gb.cursorPos == 0);
+            assert(gbc.cursorPos == 0);
+
+            assert(gb.contentAfterGap.to!string == text);
+            assert(gbc.contentAfterGap.to!string == combtext);
+
+            gb.cursorPos = 5;
+            assert(gb.charactersCount == 10);
+            assert(gbc.charactersCount == 10);
+
+            assert(gb.cursorPos == 5);
+            assert(gbc.cursorPos == 5);
+
+            assert(gb.contentBeforeGap == "12345");
+            assert(gbc.contentBeforeGap == "r̈a⃑⊥ b⃑");
+
+            assert(gb.contentAfterGap == "67890");
+            assert(gbc.contentAfterGap == "67890");
+
+            gb.cursorPos(10_000).assertThrown;
+            gb.cursorPos(-10_000).assertThrown;
+
+            gb.cursorPos(0);
+            assert(gb.cursorPos == 0);
+            assert(gb.contentAfterGap.to!string == text);
+        }
+
 
     /**
      * Delete count chars to the left of the cursor position, moving the gap (and the cursor) back
@@ -477,6 +636,7 @@ private:
      * Params:
      *     count = the numbers of chars to delete.
      */
+    // XXX convert
     public void deleteLeft(ulong count)
     {
         if (buffer.length == 0 || gapStart == 0)
@@ -493,6 +653,7 @@ private:
       * Params:
       *     count = the number of chars to delete.
       */
+    // XXX convert
     public void deleteRight(ulong count)
     {
         if (buffer.length == 0 || gapEnd == buffer.length)
@@ -507,8 +668,11 @@ private:
      * Params:
      *     text = text to add.
      */
+    // XXX convert
     public void addText(dchar[] text)
     {
+        checkForMultibyteChars(text);
+
         if (text.length >= currentGapSize) {
             // doesnt fill in the gap, reallocate the buffer adding the text
             reallocate(text);
@@ -577,6 +741,8 @@ private:
      */
     public void clear(dchar[] text=null, bool moveToEndEnd=true)
     {
+        checkForMultibyteChars(text);
+
         if (moveToEndEnd) {
             buffer = text ~ createNewGap();
             gapStart = text.length;
@@ -648,6 +814,7 @@ private:
     //  textToAdd: when reallocating, add this text before/after the gap (or cursor)
     //      depending on the textDir parameter.
 
+    // XXX convert
     private void reallocate(dchar[] textToAdd=null)
     {
         immutable oldContentAfterGapLen = contentAfterGap.length;
@@ -668,6 +835,8 @@ private:
         gapStart += textToAdd.length;
         gapEnd = buffer.length - oldContentAfterGapLen;
         reallocCount += 1;
+
+        checkForMultibyteChars(buffer);
     }
 
     pragma(inline)
@@ -712,6 +881,7 @@ private:
 
     // Convert an index to the content to a real index in the buffer
     pragma(inline)
+    // XXX convert
     private const(ulong) contentIdx2BufferIdx(ulong idx) const
     {
         if (idx >= gapStart) {
@@ -748,7 +918,7 @@ private:
     /**
      * $ (length) operator
      */
-    public alias opDollar = contentLength;
+    public alias opDollar = charactersCount;
 
     /**
      * index operator assignment: gapBuffer[2] = 'x';
@@ -772,6 +942,7 @@ private:
     /**
      * index operator read: auto x = gapBuffer[0..3]
      */
+    // XXX convert
     pragma(inline)
     public const(dchar[]) opSlice(ulong start, ulong end) const
     {
@@ -791,7 +962,7 @@ private:
     pragma(inline)
     public const(dchar[]) opSlice() const
     {
-        return opSlice(0, contentLength);
+        return content;
     }
 
         @system unittest
@@ -829,7 +1000,7 @@ private:
     pragma(inline)
     @property public bool empty() const
     {
-        return !contentLength;
+        return !charactersCount;
     }
 
         @system unittest
@@ -854,9 +1025,10 @@ private:
      * the front is the start of the content, NOT the content
      * from the cursor position.
      */
+    // XXX convert
     @property public ref dchar front()
     {
-        assert(contentLength > 0,
+        assert(charactersCount > 0,
                 "Attempt to fetch the front with the cursor at the end of the gapbuffer");
         if (gapStart == 0) {
             return buffer[gapEnd];
@@ -881,7 +1053,7 @@ private:
      */
     @property public void popFront()
     {
-        assert(contentLength > 0,
+        assert(charactersCount > 0,
                 "Attempt to popFront with the cursor at the end of the gapbuffer");
         cursorPos = 0;
         deleteRight(1);
@@ -890,23 +1062,23 @@ private:
         @system unittest
         {
             auto gb = GapBuffer!string("Pok");
-            auto clen = gb.contentLength;
+            auto clen = gb.charactersCount;
 
             assert(gb.front == 'P');
             gb.popFront;
             clen--;
             assert(gb.front == 'o');
-            assert(clen == gb.contentLength);
+            assert(clen == gb.charactersCount);
 
             gb.popFront;
             gb.cursorForward(1); // should have no effect
             clen--;
             assert(gb.front == 'k');
-            assert(clen == gb.contentLength);
+            assert(clen == gb.charactersCount);
 
             gb.popFront;
             clen--;
-            assert(clen == gb.contentLength);
+            assert(clen == gb.charactersCount);
             assert(clen == 0);
         }
 
@@ -939,19 +1111,16 @@ private:
             assert(gb.content == "Some initial text");
         }
 
-    // Forward range interface
-    // TODO: return a real copy, add specific unittest
-    @property GapBuffer!StringT save()
-    {
-        auto gb = GapBuffer!StringT(this.mutableCopyContent);
-        return gb;
-    }
+        @system unittest
+        {
+            import std.range.primitives: isInputRange;
+            assert(isInputRange!(GapBuffer!string));
+        }
 
         /// test library functions taking an InputRange or ForwardRange
         @system unittest
         {
             import std.range;
-            import std.range.primitives;
             import std.algorithm.comparison: equal;
 
             auto text = "Some initial text";
@@ -976,16 +1145,51 @@ private:
             assert(gb.enumerate.length == 17);
             assert(zip(gb, gb2).length == 15);
 
-            // TODO: chunks, cycle, only, etc
-
-            auto r1 = GapBuffer.init;
-            auto s1 = r1.save;
-            assert(isInputRange!GapBuffer && is(typeof(s1) == GapBuffer));
-            //writeln("XXX gb: ", typeof(gb));
-            //writeln("XXX gb2: ", typeof(gb3));
-            assert(isInputRange!GapBuffer);
-            assert(isForwardRange!GapBuffer);
+            // TODO: refRange, padLeft, padRight
         }
+
+    // Forward range interface
+    // TODO: return a real copy, add specific unittest
+    // XXX return this?
+    @property public GapBuffer!StringT save()
+    {
+        auto gb = GapBuffer!StringT(this.content.dup);
+        return gb;
+    }
+
+        @system unittest
+        {
+            import std.range.primitives: isForwardRange;
+            assert(isForwardRange!(GapBuffer!string));
+        }
+
+    @system unittest
+    {
+        import std.range;
+        import std.algorithm: equal, count;
+
+        auto text = "Some initial text"; // textlength 17
+        auto gb = GapBuffer!string(text);
+
+        auto text2 = " with more text"d;
+        auto gb2 = GapBuffer!dstring(text2); // different type
+
+        assert(gb.cycle.take(text.length*2).equal(text ~ text));
+
+        auto gb3 = GapBuffer!string("Another text");
+        GapBuffer!string[] rangeOfGapBuffers = [gb, gb3];
+        assert(rangeOfGapBuffers.transposed.count == 17);
+
+        // FIXME: indexing by [] on chks doesnt work?
+        auto chks = chunks(gb, 4);
+        assert(chks.front.equal("Some"));
+        chks.popFront;
+        assert(chks.front.equal(" ini"));
+
+        // TODO: evenchunks
+
+    }
+     //TODO: chunks, only, etc
 
 }
 
@@ -1000,8 +1204,8 @@ private:
     auto gb16 = GapBuffer!wstring(wtext);
     auto gb32 = GapBuffer!dstring(dtext);
 
-    assert(gb8.contentLength == gb32.contentLength);
-    assert(gb8.contentLength == gb16.contentLength);
+    assert(gb8.charactersCount == gb32.charactersCount);
+    assert(gb8.charactersCount == gb16.charactersCount);
     assert(gb8.content == gb32.content);
     assert(gb8.content == gb16.content);
     assert(gb8.content.to!string.length == 27);

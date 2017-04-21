@@ -11,10 +11,10 @@
 	"targetType": "executable",
 	"mainSourceFile": "source/app.d",
     "buildRequirements": ["requireBoundsCheck"],
-    "importPaths": ["source", "source/backend/d"],
-    "sourcePaths": ["source", "source/backend/d"],
+    "importPaths": ["source", "source/core", "source/util"],
+    "sourcePaths": ["source", "source/core", "source/util"],
 	"subPackages": [],
-	"excludedSourceFiles": ["source/backend/d/discarded.d"],
+	"excludedSourceFiles": ["source/core/discarded.d", "source/core/exploratory/*"],
 	"dependencies": {
 	}
 }
