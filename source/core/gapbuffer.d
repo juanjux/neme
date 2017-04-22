@@ -66,6 +66,8 @@ debug {
  * will be used
  * XXX remove the StringT param, the user just have to convert to dchar
  */
+
+
 struct GapBuffer(StringT=string)
     if(is(StringT == string) || is(StringT == wstring) || is(StringT == dstring))
 {
@@ -76,8 +78,7 @@ public:
     /// Counter the times the gap have been extended.
     ulong gapExtensionCount;
 
-
-private:
+package:
     enum Direction { Front, Back }
     dchar[] buffer = null;
     ulong gapStart;
@@ -151,67 +152,95 @@ private:
         hasCombiningChars = text.byCodePoint.count != text.byGrapheme.count;
     }
 
-    // Return the number of characters between two buffer array-indexes
     pragma(inline)
-    private ulong graphemesBetween(size_t start, size_t end)
+    private ulong countGraphemes(const dchar[] slice) const
     {
-        assert(end >= start);
-
-        // avoid the slow path in this case
-        if (start == end)
-            return 0;
-
-        if (hasCombiningChars) {
-            return buffer[start..end].byGrapheme.count;
+        // fast path
+        if (!hasCombiningChars) {
+            return slice.length;
         }
-        return end - start;
+        return slice.byGrapheme.count;
     }
 
-    unittest
-    {
-        // 17 dchars, 17 graphemes
-        auto str_a = "some ascii string"d;
-        // 20 dchars, 17 graphemes
-        auto str_c = "ññññ r̈a⃑⊥ b⃑ string"d;
+        unittest
+        {
+            // 17 dchars, 17 graphemes
+            auto str_a = "some ascii string"d;
+            // 20 dchars, 17 graphemes
+            auto str_c = "ññññ r̈a⃑⊥ b⃑ string"d;
 
-        auto test = "ññññ r̈a⃑⊥ b⃑ string"d;
-        auto gba = GapBuffer!dstring(str_a);
-        assert(!gba.hasCombiningChars);
-        gba.cursorPos = 9999;
+            auto test = "ññññ r̈a⃑⊥ b⃑ string"d;
+            auto gba = GapBuffer!dstring(str_a);
+            assert(!gba.hasCombiningChars);
+            gba.cursorPos = 9999;
 
-        auto gbc = GapBuffer!dstring(str_c);
-        assert(gbc.hasCombiningChars);
-        gbc.cursorPos = 9999;
+            auto gbc = GapBuffer!dstring(str_c);
+            assert(gbc.hasCombiningChars);
+            gbc.cursorPos = 9999;
 
-        assert(gba.graphemesBetween(0, 4) == 4);
-        assert(gbc.graphemesBetween(0, 4) == 4);
+            assert(gba.countGraphemes(gba.buffer[0..4]) == 4);
+            assert(gbc.countGraphemes(gbc.buffer[0..4]) == 4);
 
-        assert(gba.graphemesBetween(0, 17) == 17);
-        assert(gbc.graphemesBetween(0, 20) == 17);
-    }
+            assert(gba.countGraphemes(gba.buffer[0..17]) == 17);
+            assert(gbc.countGraphemes(gbc.buffer[0..20]) == 17);
+        }
 
 
-    // Return the number of dchars that numChars graphemes occupy from
+    // Return the number of dchars that numGraphemes graphemes occupy from
     // the given (array) position in the given direction. This doesnt checks
     // for the gap
-    // XXX unittest
-    private size_t charsTakenByGraphemes(size_t idx, ulong numChars, Direction dir)
+    // XXX check for the gap
+    package size_t idxDiffUntilGrapheme(size_t idx, ulong numGraphemes, Direction dir)
     {
         import std.range: take, tail;
 
+        if (numGraphemes == 0)
+            return 0;
+
         // fast path
         if (!hasCombiningChars) {
-            return numChars;
+            return numGraphemes;
         }
 
         size_t charCount;
+        writeln("XXX in idx: ", idx);
+        writeln("XXX in numGraphemes: ", numGraphemes);
+        writeln("XXX in byGrapheme: ", buffer[idx..$].byGrapheme.count);
+        writeln("XXX in byCodePoint: ", buffer[idx..$].byGrapheme.byCodePoint.count);
         if (dir == Direction.Front) {
-            charCount = buffer[idx..$].byGrapheme.take(numChars).byCodePoint.count;
+            charCount = buffer[idx..$].byGrapheme.take(numGraphemes).byCodePoint.count;
         } else { // Direction.Back
-            charCount = buffer[0..idx].byGrapheme.tail(numChars).byCodePoint.count;
+            charCount = buffer[0..idx].byGrapheme.tail(numGraphemes).byCodePoint.count;
         }
+        writeln("XXX in returning: ", charCount);
         return charCount;
     }
+
+        unittest
+        {
+            dstring text = "Some initial text";
+            dstring combtext = "r̈a⃑⊥ b⃑67890";
+
+            auto gb = GapBuffer!dstring(text);
+            auto gbc = GapBuffer!dstring(combtext);
+
+            alias front = gb.Direction.Front;
+            assert(gb.idxDiffUntilGrapheme(gb.gapEnd, 4, front) == 4);
+            assert(gb.idxDiffUntilGrapheme(gb.gapEnd, gb.graphemesCount, front) == text.length);
+
+            assert(gbc.idxDiffUntilGrapheme(gbc.gapEnd, gbc.graphemesCount, front) == combtext.length);
+            assert(gbc.idxDiffUntilGrapheme(gbc.buffer.length - 4, 4, front) == 4);
+            assert(gbc.idxDiffUntilGrapheme(gbc.gapEnd,     1, front) == 2);
+            assert(gbc.idxDiffUntilGrapheme(gbc.gapEnd + 2, 1, front) == 2);
+            assert(gbc.idxDiffUntilGrapheme(gbc.gapEnd + 4, 1, front) == 1);
+            assert(gbc.idxDiffUntilGrapheme(gbc.gapEnd + 5, 1, front) == 1);
+            assert(gbc.idxDiffUntilGrapheme(gbc.gapEnd + 6, 1, front) == 2);
+            assert(gbc.idxDiffUntilGrapheme(gbc.gapEnd + 8, 1, front) == 1);
+            assert(gbc.idxDiffUntilGrapheme(gbc.gapEnd + 9, 1, front) == 1);
+            assert(gbc.idxDiffUntilGrapheme(gbc.gapEnd + 10, 1, front) == 1);
+            assert(gbc.idxDiffUntilGrapheme(gbc.gapEnd + 11, 1, front) == 1);
+            assert(gbc.idxDiffUntilGrapheme(gbc.gapEnd + 12, 1, front) == 1);
+        }
 
     pragma(inline)
     private dchar[] asArray(StrT = string)(StrT str)
@@ -242,18 +271,19 @@ private:
     public void debugContent()
     {
         writeln("gapstart: ", gapStart, " gapend: ", gapEnd, " len: ", buffer.length,
-                " currentGapSize: ", currentGapSize, " configuredGapSize: ", configuredGapSize);
+                " currentGapSize: ", currentGapSize, " configuredGapSize: ", configuredGapSize,
+                " graphemesCount: ", graphemesCount);
         writeln("BeforeGap:|", contentBeforeGap,"|");
         writeln("AfterGap:|", contentAfterGap, "|");
         writeln("Text content:|", content, "|");
         writeln("Full buffer:");
         writeln(buffer);
-        foreach (_; buffer[0 .. gapStart])
+        foreach (_; buffer[0 .. gapStart].byGrapheme)
         {
             write(" ");
         }
         write("^");
-        foreach (_; buffer[gapStart .. gapEnd - 2])
+        foreach (_; buffer[gapStart .. gapEnd - 2].byGrapheme)
         {
             write("#");
         }
@@ -411,7 +441,7 @@ private:
         {
             auto gb = GapBuffer!string("123");
             gb.deleteRight(3);
-            assert(gb.charactersCount == 0);
+            assert(gb.graphemesCount == 0);
         }
         @system unittest
         {
@@ -463,17 +493,19 @@ private:
         return (contentBeforeGap.length + contentAfterGap.length).sizeof;
     }
 
-    /// Return the number of visual chars (graphemes). This number can be different
-    /// from the number of chartype elements or even unicode code points.
+    /// Return the number of visual chars (graphemes). This number can be
+    //different / from the number of chartype elements or even unicode code
+    //points.
     pragma(inline)
-    @property public ulong charactersCount() const
+    @property public ulong graphemesCount() const
     {
         if(hasCombiningChars) {
-            return contentBeforeGap.byGrapheme.count + contentAfterGap.byGrapheme.count;
+            return contentBeforeGap.byGrapheme.count +
+                   contentAfterGap.byGrapheme.count;
         }
         return contentBeforeGap.length + contentAfterGap.length;
     }
-    public alias length = charactersCount;
+    public alias length = graphemesCount;
 
     /**
      * Returns the cursor position (the gapStart)
@@ -481,23 +513,28 @@ private:
     pragma(inline)
     @property public ulong cursorPos() const
     {
-        return gapStart;
+        // fast path
+        if (!hasCombiningChars)
+            return gapStart;
+
+        // FIXME: since this part is slow, we should now keep the cursor
+        // position updated on insertions, deletions and cursor movements to
+        // avoid this expensive shit of counting graphemes (when swithing
+        // to pure unicode mode the cursor position should be saved at the
+        // start)
+        return countGraphemes(contentBeforeGap);
     }
 
-    // XXX convert
-    public void cursorForward(ulong charCount)
+    public void cursorForward(ulong graphemeCount)
     {
 
-        if (charCount <= 0 || buffer.length == 0 || gapEnd + 1 == buffer.length)
+        if (graphemeCount <= 0 || buffer.length == 0 || gapEnd + 1 == buffer.length)
             return;
 
-        immutable charsToCopy = min(charCount,
-                                    graphemesBetween(gapEnd, buffer.length));
-
-        immutable newGapStart = gapStart + charsTakenByGraphemes(gapEnd, charsToCopy,
-                                                                 Direction.Back);
-        //immutable newGapStart = gapStart + charsToCopy;
-        immutable newGapEnd = gapEnd + charsToCopy;
+        immutable graphemesToCopy = min(graphemeCount, countGraphemes(contentAfterGap));
+        immutable idxDiff = idxDiffUntilGrapheme(gapEnd, graphemesToCopy, Direction.Front);
+        immutable newGapStart = gapStart + idxDiff;
+        immutable newGapEnd = gapEnd + idxDiff;
 
         buffer[gapEnd..newGapEnd].copy(buffer[gapStart..newGapStart]);
         gapStart = newGapStart;
@@ -510,15 +547,15 @@ private:
      * Params:
      *     count = the number of places to move to the left.
      */
-    // XXX convert
-    public void cursorBackward(ulong count)
+    public void cursorBackward(ulong graphemeCount)
     {
-        if (count <= 0 || buffer.length == 0 || gapStart == 0)
+        if (graphemeCount <= 0 || buffer.length == 0 || gapStart == 0)
             return;
 
-        immutable charsToCopy = min(count, gapStart);
-        immutable newGapStart = gapStart - charsToCopy;
-        immutable newGapEnd = gapEnd - charsToCopy;
+        immutable graphemesToCopy = min(graphemeCount, countGraphemes(contentBeforeGap));
+        immutable idxDiff = idxDiffUntilGrapheme(gapStart, graphemesToCopy, Direction.Back);
+        immutable newGapStart = gapStart - idxDiff;
+        immutable newGapEnd = gapEnd - idxDiff;
 
         buffer[newGapStart..gapStart].copy(buffer[newGapEnd..gapEnd]);
         gapStart = newGapStart;
@@ -542,25 +579,21 @@ private:
             assert(gb.cursorPos == 5);
             assert(gbc.cursorPos == 5);
 
-            gb.debugContent;
             assert(gb.contentBeforeGap == "Some ");
-            gbc.debugContent;
             assert(gbc.contentBeforeGap == "r̈a⃑⊥ b⃑");
 
             assert(gb.contentAfterGap == "initial text");
             assert(gbc.contentAfterGap == "67890");
 
             gb.cursorForward(10_000);
-            gb.cursorForward(10_000);
+            gbc.cursorForward(10_000);
+            writeln(gb.cursorPos, " ", gbc.cursorPos);
 
-            assert(gbc.cursorPos == text.length);
-            assert(gbc.cursorPos == text.length);
-
-            gbc.cursorBackward(4);
+            gb.cursorBackward(4);
             gbc.cursorBackward(4);
 
             assert(gb.cursorPos == gb.content.length - 4);
-            assert(gbc.cursorPos == gb.content.length - 4);
+            assert(gbc.cursorPos == gbc.content.byGrapheme.count - 4);
 
             assert(gb.contentBeforeGap == "Some initial ");
             assert(gbc.contentBeforeGap == "r̈a⃑⊥ b⃑6");
@@ -568,13 +601,13 @@ private:
             assert(gb.contentAfterGap == "text");
             assert(gbc.contentAfterGap == "7890");
 
-            assert(gb.cursorPos == gbc.cursorPos);
             immutable prevCurPos = gb.cursorPos;
+            immutable cprevCurPos = gbc.cursorPos;
             gb.cursorForward(0);
             gbc.cursorForward(0);
 
-            assert(gbc.cursorPos == prevCurPos);
-            assert(gbc.cursorPos == prevCurPos);
+            assert(gb.cursorPos == prevCurPos);
+            assert(gbc.cursorPos == cprevCurPos);
         }
     /**
      * Sets the cursor position. The position is relative to
@@ -583,7 +616,6 @@ private:
     pragma(inline)
     @property public void cursorPos(ulong pos)
     {
-        enforce(pos >= 0 && pos < charactersCount + 1);
         if (cursorPos > pos) {
             cursorBackward(cursorPos - pos);
         } else {
@@ -598,8 +630,8 @@ private:
             string combtext = "r̈a⃑⊥ b⃑67890";
             auto gb  = GapBuffer(text.to!StringT);
             auto gbc = GapBuffer(combtext.to!StringT);
-            assert(gbc.charactersCount == 10);
-            assert(gbc.charactersCount == 10);
+            assert(gb.graphemesCount == 10);
+            assert(gbc.graphemesCount == 10);
 
             assert(gb.cursorPos == 0);
             assert(gbc.cursorPos == 0);
@@ -608,8 +640,9 @@ private:
             assert(gbc.contentAfterGap.to!string == combtext);
 
             gb.cursorPos = 5;
-            assert(gb.charactersCount == 10);
-            assert(gbc.charactersCount == 10);
+            gbc.cursorPos = 5;
+            assert(gb.graphemesCount == 10);
+            assert(gbc.graphemesCount == 10);
 
             assert(gb.cursorPos == 5);
             assert(gbc.cursorPos == 5);
@@ -620,12 +653,14 @@ private:
             assert(gb.contentAfterGap == "67890");
             assert(gbc.contentAfterGap == "67890");
 
-            gb.cursorPos(10_000).assertThrown;
-            gb.cursorPos(-10_000).assertThrown;
-
             gb.cursorPos(0);
+            gbc.cursorPos(0);
+
             assert(gb.cursorPos == 0);
+            assert(gbc.cursorPos == 0);
+
             assert(gb.contentAfterGap.to!string == text);
+            assert(gbc.contentAfterGap.to!string == combtext);
         }
 
 
@@ -918,7 +953,7 @@ private:
     /**
      * $ (length) operator
      */
-    public alias opDollar = charactersCount;
+    public alias opDollar = graphemesCount;
 
     /**
      * index operator assignment: gapBuffer[2] = 'x';
@@ -1000,7 +1035,7 @@ private:
     pragma(inline)
     @property public bool empty() const
     {
-        return !charactersCount;
+        return !graphemesCount;
     }
 
         @system unittest
@@ -1028,7 +1063,7 @@ private:
     // XXX convert
     @property public ref dchar front()
     {
-        assert(charactersCount > 0,
+        assert(graphemesCount > 0,
                 "Attempt to fetch the front with the cursor at the end of the gapbuffer");
         if (gapStart == 0) {
             return buffer[gapEnd];
@@ -1053,7 +1088,7 @@ private:
      */
     @property public void popFront()
     {
-        assert(charactersCount > 0,
+        assert(graphemesCount > 0,
                 "Attempt to popFront with the cursor at the end of the gapbuffer");
         cursorPos = 0;
         deleteRight(1);
@@ -1062,23 +1097,23 @@ private:
         @system unittest
         {
             auto gb = GapBuffer!string("Pok");
-            auto clen = gb.charactersCount;
+            auto clen = gb.graphemesCount;
 
             assert(gb.front == 'P');
             gb.popFront;
             clen--;
             assert(gb.front == 'o');
-            assert(clen == gb.charactersCount);
+            assert(clen == gb.graphemesCount);
 
             gb.popFront;
             gb.cursorForward(1); // should have no effect
             clen--;
             assert(gb.front == 'k');
-            assert(clen == gb.charactersCount);
+            assert(clen == gb.graphemesCount);
 
             gb.popFront;
             clen--;
-            assert(clen == gb.charactersCount);
+            assert(clen == gb.graphemesCount);
             assert(clen == 0);
         }
 
@@ -1204,8 +1239,8 @@ private:
     auto gb16 = GapBuffer!wstring(wtext);
     auto gb32 = GapBuffer!dstring(dtext);
 
-    assert(gb8.charactersCount == gb32.charactersCount);
-    assert(gb8.charactersCount == gb16.charactersCount);
+    assert(gb8.graphemesCount == gb32.graphemesCount);
+    assert(gb8.graphemesCount == gb16.graphemesCount);
     assert(gb8.content == gb32.content);
     assert(gb8.content == gb16.content);
     assert(gb8.content.to!string.length == 27);
