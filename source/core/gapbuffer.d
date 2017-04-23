@@ -64,7 +64,6 @@ debug {
  * Params:
  * The template parameter StringT is only used for the text passed to the constructor since internally dchar
  * will be used
- * XXX remove the StringT param, the user just have to convert to dchar
  */
 
 
@@ -92,20 +91,17 @@ package:
     alias GrphIdx = ulong;
 
     // TODO: increase gap size to something bigger
-    /// Constructor that takes a StringT as the inital contents
-    public this(StringT text, ulong gapSize = 100)
-    {
-        enforce(gapSize > 1, "Minimum gap size must be greater than 1");
-        _configuredGapSize = gapSize;
-        clear(text, false);
-    }
-
     // FIXME: generic way to avoid two constructors for StringT and dchar?
     public this(dchar[] textarray, ulong gapSize = 100)
     {
         enforce(gapSize > 1, "Minimum gap size must be greater than 1");
         _configuredGapSize = gapSize;
         clear(textarray, false);
+    }
+
+    public this(StringT text, ulong gapSize = 100)
+    {
+        this(to!(dchar[])(text), gapSize);
     }
 
         @system unittest
@@ -147,7 +143,7 @@ package:
         }
 
     pragma(inline)
-    private void checkForMultibyteChars(T)(T text)
+    public void checkForMultibyteChars(T)(T text)
     {
         hasCombiningChars = text.byCodePoint.count != text.byGrapheme.count;
     }
@@ -159,6 +155,7 @@ package:
         if (!hasCombiningChars) {
             return slice.length;
         }
+        // slow path
         return slice.byGrapheme.count;
     }
 
@@ -188,8 +185,7 @@ package:
 
     // Return the number of dchars that numGraphemes graphemes occupy from
     // the given (array) position in the given direction. This doesnt checks
-    // for the gap
-    // XXX check for the gap
+    // for the gap so the caller must have checked that
     package size_t idxDiffUntilGrapheme(size_t idx, ulong numGraphemes, Direction dir)
     {
         import std.range: take, tail;
@@ -203,16 +199,11 @@ package:
         }
 
         size_t charCount;
-        writeln("XXX in idx: ", idx);
-        writeln("XXX in numGraphemes: ", numGraphemes);
-        writeln("XXX in byGrapheme: ", buffer[idx..$].byGrapheme.count);
-        writeln("XXX in byCodePoint: ", buffer[idx..$].byGrapheme.byCodePoint.count);
         if (dir == Direction.Front) {
             charCount = buffer[idx..$].byGrapheme.take(numGraphemes).byCodePoint.count;
         } else { // Direction.Back
             charCount = buffer[0..idx].byGrapheme.tail(numGraphemes).byCodePoint.count;
         }
-        writeln("XXX in returning: ", charCount);
         return charCount;
     }
 
@@ -252,15 +243,15 @@ package:
     pragma(inline)
     dchar[] createNewGap(ulong gapSize=0)
     {
-        ulong actualGapSize = gapSize? gapSize: configuredGapSize;
-
+        // if a new gapsize was specified use that, else use the configured default
+        ulong newGapSize = gapSize? gapSize: configuredGapSize;
         debug
         {
-            return replicate(['-'.to!dchar], actualGapSize);
+            return replicate(['-'.to!dchar], newGapSize);
         }
         else
         {
-            return new dchar[](actualGapSize);
+            return new dchar[](newGapSize);
         }
     }
 
@@ -431,7 +422,7 @@ package:
         {
             auto gb = GapBuffer("Some text to delete", 50);
             // Deleting should recover space from the gap
-            immutable prevCurSize = gb.currentGapSize;
+            auto prevCurSize = gb.currentGapSize;
             gb.deleteRight(10);
             assert(gb.currentGapSize == prevCurSize + 10);
             assert(gb.content.to!string == "to delete");
@@ -447,7 +438,7 @@ package:
         {
             // Same to the left, if we move the cursor to the left of the text to delete
             auto gb = GapBuffer("Some text to delete", 50);
-            immutable prevCurSize = gb.currentGapSize;
+            auto prevCurSize = gb.currentGapSize;
             gb.cursorForward(10);
             gb.deleteLeft(10);
             assert(gb.currentGapSize == prevCurSize + 10);
@@ -462,7 +453,7 @@ package:
             gb.cursorForward(5);
             assert(gb.contentBeforeGap == "Some ");
             assert(gb.contentAfterGap == "text");
-            immutable prevBufferLen = gb.buffer.length;
+            auto prevBufferLen = gb.buffer.length;
 
             gb.configuredGapSize = 100;
             assert(gb.reallocCount == 1);
@@ -531,10 +522,10 @@ package:
         if (graphemeCount <= 0 || buffer.length == 0 || gapEnd + 1 == buffer.length)
             return;
 
-        immutable graphemesToCopy = min(graphemeCount, countGraphemes(contentAfterGap));
-        immutable idxDiff = idxDiffUntilGrapheme(gapEnd, graphemesToCopy, Direction.Front);
-        immutable newGapStart = gapStart + idxDiff;
-        immutable newGapEnd = gapEnd + idxDiff;
+        auto graphemesToCopy = min(graphemeCount, countGraphemes(contentAfterGap));
+        auto idxDiff = idxDiffUntilGrapheme(gapEnd, graphemesToCopy, Direction.Front);
+        auto newGapStart = gapStart + idxDiff;
+        auto newGapEnd = gapEnd + idxDiff;
 
         buffer[gapEnd..newGapEnd].copy(buffer[gapStart..newGapStart]);
         gapStart = newGapStart;
@@ -552,10 +543,10 @@ package:
         if (graphemeCount <= 0 || buffer.length == 0 || gapStart == 0)
             return;
 
-        immutable graphemesToCopy = min(graphemeCount, countGraphemes(contentBeforeGap));
-        immutable idxDiff = idxDiffUntilGrapheme(gapStart, graphemesToCopy, Direction.Back);
-        immutable newGapStart = gapStart - idxDiff;
-        immutable newGapEnd = gapEnd - idxDiff;
+        auto graphemesToCopy = min(graphemeCount, countGraphemes(contentBeforeGap));
+        auto idxDiff = idxDiffUntilGrapheme(gapStart, graphemesToCopy, Direction.Back);
+        auto newGapStart = gapStart - idxDiff;
+        auto newGapEnd = gapEnd - idxDiff;
 
         buffer[newGapStart..gapStart].copy(buffer[newGapEnd..gapEnd]);
         gapStart = newGapStart;
@@ -587,7 +578,6 @@ package:
 
             gb.cursorForward(10_000);
             gbc.cursorForward(10_000);
-            writeln(gb.cursorPos, " ", gbc.cursorPos);
 
             gb.cursorBackward(4);
             gbc.cursorBackward(4);
@@ -664,6 +654,12 @@ package:
         }
 
 
+    // XXX convert
+    // Note: this wont call checkForMultibyteChars because it would have to check
+    // the full text and it could be slow, so for example on a text with the slow
+    // path enabled because it has combining chars deleting all the combining
+    // chars with this method wont switch to the fast path like adding text do.
+    // If you need that, call checkForMultibyteChars manually or wait for reallocation.
     /**
      * Delete count chars to the left of the cursor position, moving the gap (and the cursor) back
      * (typically the effect of the backspace key).
@@ -671,15 +667,21 @@ package:
      * Params:
      *     count = the numbers of chars to delete.
      */
-    // XXX convert
-    public void deleteLeft(ulong count)
+    public void deleteLeft(ulong graphemeCount)
     {
         if (buffer.length == 0 || gapStart == 0)
             return;
 
-        gapStart = max(gapStart - count, 0);
+        auto graphemesToDel = min(graphemeCount, countGraphemes(contentBeforeGap));
+        auto idxDiff = idxDiffUntilGrapheme(gapStart, graphemesToDel, Direction.Back);
+        gapStart = max(gapStart - idxDiff, 0);
     }
 
+    // Note: this wont call checkForMultibyteChars because it would have to check
+    // the full text and it could be slow, so for example on a text with the slow
+    // path enabled because it has combining chars deleting all the combining
+    // chars with this method wont switch to the fast path like adding text do.
+    // If you need that, call checkForMultibyteChars manually or wait for reallocation.
     /**
       * Delete count chars to the right of the cursor position, moving the end of the gap to the right,
       * keeping the cursor at the same position
@@ -688,13 +690,14 @@ package:
       * Params:
       *     count = the number of chars to delete.
       */
-    // XXX convert
-    public void deleteRight(ulong count)
+    public void deleteRight(ulong graphemeCount)
     {
         if (buffer.length == 0 || gapEnd == buffer.length)
             return;
 
-        gapEnd = min(gapEnd + count, buffer.length);
+        auto graphemesToDel = min(graphemeCount, countGraphemes(contentAfterGap));
+        auto idxDiff = idxDiffUntilGrapheme(gapEnd, graphemesToDel, Direction.Front);
+        gapEnd = min(gapEnd + idxDiff, buffer.length);
     }
 
     /**
@@ -703,15 +706,13 @@ package:
      * Params:
      *     text = text to add.
      */
-    // XXX convert
     public void addText(dchar[] text)
     {
-        checkForMultibyteChars(text);
-
         if (text.length >= currentGapSize) {
             // doesnt fill in the gap, reallocate the buffer adding the text
             reallocate(text);
         } else {
+            checkForMultibyteChars(text);
             auto newGapStart = gapStart + text.length;
             text.copy(buffer[gapStart..newGapStart]);
             gapStart = newGapStart;
@@ -724,6 +725,7 @@ package:
     {
         addText(asArray(text));
     }
+        // XXX add combined chars test
         @system unittest
         {
             auto gb = GapBuffer("", 100);
@@ -739,6 +741,7 @@ package:
             assert(gb.gapStart == prevGapStart + text.length);
             assert(gb.gapEnd == prevGapEnd);
         }
+        // XXX add combined chars test
         @system unittest
         {
             auto gb = GapBuffer("", 10);
@@ -753,6 +756,7 @@ package:
             assert(gb.gapStart == prevGapStart + text.length);
             assert(gb.gapEnd == prevGapEnd + text.length);
         }
+        // XXX add combined chars test
         @system unittest
         {
             auto gb = GapBuffer("", 10);
@@ -776,8 +780,6 @@ package:
      */
     public void clear(dchar[] text=null, bool moveToEndEnd=true)
     {
-        checkForMultibyteChars(text);
-
         if (moveToEndEnd) {
             buffer = text ~ createNewGap();
             gapStart = text.length;
@@ -787,6 +789,7 @@ package:
             gapStart = 0;
             gapEnd = _configuredGapSize;
         }
+        checkForMultibyteChars(text);
     }
 
     pragma(inline)
@@ -796,6 +799,7 @@ package:
         clear(asArray(text), moveToEndEnd);
     }
 
+        // XXX add combined chars test
         /// clear without text
         @system unittest
         {
@@ -809,6 +813,7 @@ package:
             assert(gb.gapEnd == gb.configuredGapSize);
         }
 
+        // XXX add combined chars test
         /// clear with some text, moving to the end
         @system unittest
         {
@@ -824,6 +829,7 @@ package:
             assert(gb.gapEnd == gb.buffer.length);
         }
 
+        // XXX add combined chars test
         /// clear with some text, moving to the start
         @system unittest
         {
@@ -848,11 +854,9 @@ package:
     // Params:
     //  textToAdd: when reallocating, add this text before/after the gap (or cursor)
     //      depending on the textDir parameter.
-
-    // XXX convert
     private void reallocate(dchar[] textToAdd=null)
     {
-        immutable oldContentAfterGapLen = contentAfterGap.length;
+        auto oldContentAfterGapLen = countGraphemes(contentAfterGap);
 
         // Check if the actual size of the gap is smaller than configuredSize
         // to extend the gap (and how much)
@@ -860,7 +864,6 @@ package:
         if (currentGapSize >= _configuredGapSize) {
             // no need to extend the gap
             gapExtension.length = 0;
-            //writeln(currentGapSize, _configuredGapSize);
         } else {
             gapExtension = createNewGap(configuredGapSize - currentGapSize);
             gapExtensionCount += 1;
@@ -880,6 +883,7 @@ package:
     {
         reallocate(asArray(textToAdd));
     }
+        // XXX add combined chars test
         @system unittest
         {
             auto gb = GapBuffer("Some text");
@@ -894,6 +898,7 @@ package:
             assert(prevGapStart == gb.gapStart);
             assert(prevGapEnd == gb.gapEnd);
         }
+        // XXX add combined chars test
         @system unittest
         {
             auto gb = GapBuffer("Some text");
@@ -916,7 +921,6 @@ package:
 
     // Convert an index to the content to a real index in the buffer
     pragma(inline)
-    // XXX convert
     private const(ulong) contentIdx2BufferIdx(ulong idx) const
     {
         if (idx >= gapStart) {
@@ -926,6 +930,7 @@ package:
         return idx;
     }
 
+        // XXX add combined chars test
         @system unittest
         {
             auto gapSize = 10;
@@ -965,6 +970,7 @@ package:
         return value;
     }
 
+        // XXX add combined chars test
         @system unittest
         {
             auto gb = GapBuffer!string("012345");
@@ -983,12 +989,13 @@ package:
     {
         return content[start..end];
     }
-    @system unittest
-    {
-        auto gb = GapBuffer!string("polompos");
-        assert(gb[0..2] == "po");
-        assert(gb[0..$] == "polompos");
-    }
+        // XXX add combined chars test
+        @system unittest
+        {
+            auto gb = GapBuffer!string("polompos");
+            assert(gb[0..2] == "po");
+            assert(gb[0..$] == "polompos");
+        }
 
 
     /**
@@ -1024,6 +1031,7 @@ package:
         return opIndexAssign(asArray(value));
     }
 
+        // XXX add combined chars test
         @system unittest
         {
             auto gb = GapBuffer!string("polompos");
@@ -1038,6 +1046,7 @@ package:
         return !graphemesCount;
     }
 
+        // XXX add combined chars test
         @system unittest
         {
             auto gb = GapBuffer();
@@ -1070,6 +1079,7 @@ package:
         }
         return buffer[0];
     }
+        // XXX add combined chars test
         @system unittest
         {
             auto gb = GapBuffer!string("Polompos");
@@ -1094,6 +1104,7 @@ package:
         deleteRight(1);
     }
 
+        // XXX add combined chars test
         @system unittest
         {
             auto gb = GapBuffer!string("Pok");
@@ -1117,6 +1128,7 @@ package:
             assert(clen == 0);
         }
 
+        // XXX add combined chars test
         /// test the InputRange interface
         @system unittest
         {
@@ -1132,6 +1144,7 @@ package:
             assert(gb.content == "Some initial text");
         }
 
+        // XXX add combined chars test
         /// test the foreach interface
         @system unittest
         {
@@ -1146,12 +1159,14 @@ package:
             assert(gb.content == "Some initial text");
         }
 
+        // XXX add combined chars test
         @system unittest
         {
             import std.range.primitives: isInputRange;
             assert(isInputRange!(GapBuffer!string));
         }
 
+        // XXX add combined chars test
         /// test library functions taking an InputRange or ForwardRange
         @system unittest
         {
@@ -1192,44 +1207,47 @@ package:
         return gb;
     }
 
+        // XXX add combined chars test
         @system unittest
         {
             import std.range.primitives: isForwardRange;
             assert(isForwardRange!(GapBuffer!string));
         }
 
-    @system unittest
-    {
-        import std.range;
-        import std.algorithm: equal, count;
+        // XXX add combined chars test
+        @system unittest
+        {
+            import std.range;
+            import std.algorithm: equal, count;
 
-        auto text = "Some initial text"; // textlength 17
-        auto gb = GapBuffer!string(text);
+            auto text = "Some initial text"; // textlength 17
+            auto gb = GapBuffer!string(text);
 
-        auto text2 = " with more text"d;
-        auto gb2 = GapBuffer!dstring(text2); // different type
+            auto text2 = " with more text"d;
+            auto gb2 = GapBuffer!dstring(text2); // different type
 
-        assert(gb.cycle.take(text.length*2).equal(text ~ text));
+            assert(gb.cycle.take(text.length*2).equal(text ~ text));
 
-        auto gb3 = GapBuffer!string("Another text");
-        GapBuffer!string[] rangeOfGapBuffers = [gb, gb3];
-        assert(rangeOfGapBuffers.transposed.count == 17);
+            auto gb3 = GapBuffer!string("Another text");
+            GapBuffer!string[] rangeOfGapBuffers = [gb, gb3];
+            assert(rangeOfGapBuffers.transposed.count == 17);
 
-        // FIXME: indexing by [] on chks doesnt work?
-        auto chks = chunks(gb, 4);
-        assert(chks.front.equal("Some"));
-        chks.popFront;
-        assert(chks.front.equal(" ini"));
+            // FIXME: indexing by [] on chks doesnt work?
+            auto chks = chunks(gb, 4);
+            assert(chks.front.equal("Some"));
+            chks.popFront;
+            assert(chks.front.equal(" ini"));
 
-        // TODO: evenchunks
+            // TODO: evenchunks
 
-    }
+        }
      //TODO: chunks, only, etc
 
 }
 
 // This must be outside of the template-struct. If tests inside the GapBuffer
 // runs several times is because of this
+// XXX add combined chars test
 @system unittest
 {
     string text = "init with text ñáñáñá";
