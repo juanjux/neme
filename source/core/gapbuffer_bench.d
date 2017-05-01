@@ -1,7 +1,7 @@
 module neme.core.gapbuffer_bench;
 
 import core.memory: GC;
-import neme.core.gapbuffer: GapBuffer;
+import neme.core.gapbuffer;
 import std.conv: to;
 import std.datetime;
 import std.stdio;
@@ -55,7 +55,7 @@ version(none) {
 private void bench_cursorMovement(uint iterations)
 {
     // First test, using a extremely small buffer to provoke overlap
-    scope gb = GapBuffer("This is some fine initial text", 2);
+    scope gb = gapbuffer("This is some fine initial text", 2);
 
     void moveSliceIntelligentDup() {
         gb.cursorBackward(1000);
@@ -95,7 +95,7 @@ private void bench_cursorMovement(uint iterations)
     writeln("move_algoCopyDup: ", to!Duration(duration[0]));
 
     // Repeat with a big gap that wont overlap
-    gb = GapBuffer("This is some fine initial text", 1024);
+    gb = gapbuffer("This is some fine initial text", 1024);
 
     // 8.8/4.8/4.1
     // Takes a lot less time than the previous tests since now the
@@ -130,7 +130,7 @@ private void bench_cursorMovement(uint iterations)
 version(none) {
 private void bench_appendarray(uint iterations)
 {
-    scope gb = GapBuffer("This is some fine initial text", 16);
+    scope gb = gapbuffer("This is some fine initial text", 16);
     gb.addText("bu");
     auto textToAdd = " and this is some aditional text that is a little longer";
 
@@ -165,7 +165,7 @@ private void bench_appendarray(uint iterations)
 
 void bench()
 {
-    auto g = GapBuffer!string("");
+    auto g = gapbuffer("");
 
     //uint iterations = 10_000_000;
     //bench_overlaps1(iterations);

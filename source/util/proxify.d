@@ -15,7 +15,7 @@ module neme.util.proxify;
  * This module provides a function that will return a string that can then be mixed
  * into a Struct or Class to generate delegates to any preexisting methods in
  * the class with a name starting with one of the specified Selectors and a
- * "rebindProxies!selector" method that can be used to switch from one set of
+ * "rebindProxies(selector)" method that can be used to switch from one set of
  * alternative methods to others starting with another name.
  *
  * This can be useful for example for having alternative implementations of some
@@ -40,10 +40,10 @@ module neme.util.proxify;
  *
  *     void checkConnection() {
  *        if (connectionLost) {
- *            rebindProxies!"offline_";
+ *            rebindProxies("offline_");
  *        }
  *        if (connectionRestored) {
- *            rebindProxies!"online_";
+ *            rebindProxies("online_");
  *        }
  *     }
  *
@@ -129,7 +129,7 @@ string Proxify(S=typeof(this), Selectors...)()
         cases ~= case_ ~ "break;";
     }
     cases ~= "default: return;";
-    methodsSelector = "pure @safe @nogc void rebindProxies(string S)() { switch(S){" ~ cases ~ "}}";
+    methodsSelector = "pure @safe @nogc void rebindProxies(string S) { switch(S){" ~ cases ~ "}}";
 
     string imports = "import std.traits;\n";
     return imports ~ to!string(delegateDecls ~ "\n" ~ methodsSelector);
@@ -151,14 +151,14 @@ unittest
 
     TestStruct m;
 
-    m.rebindProxies!"fast_";
+    m.rebindProxies("fast_");
 
     assert(m.bar("abc", 123) == m.fast_bar("abc", 123));
     assert(m.foo(3) == m.fast_foo(3));
     assert(m.bar == &m.fast_bar);
     assert(m.foo == &m.fast_foo);
 
-    m.rebindProxies!"slow_";
+    m.rebindProxies("slow_");
 
     assert(m.bar("abc", 123) == m.slow_bar("abc", 123));
     assert(m.foo(3) == m.slow_foo(3));
@@ -184,7 +184,7 @@ Proxify!(TestStruct, "fast_", "slow_");
 @system ReturnType!slow_foo delegate(Parameters!slow_foo) foo;
 @system ReturnType!slow_bar delegate(Parameters!slow_bar) bar;
 
-pure @nogc @safe void rebindProxies(string S)() {
+pure @nogc @safe void rebindProxies(string S) {
     switch(S)
     {
         case "fast_":
