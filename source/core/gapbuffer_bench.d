@@ -5,6 +5,7 @@ import neme.core.gapbuffer;
 import std.conv: to;
 import std.datetime;
 import std.stdio;
+import std.typecons: scoped;
 
 
 //private void bench_overlaps1(uint iterations)
@@ -165,7 +166,7 @@ private void bench_appendarray(uint iterations)
 
 void bench()
 {
-    auto g = gapbuffer("");
+    auto g = gapbuffer();
 
     //uint iterations = 10_000_000;
     //bench_overlaps1(iterations);

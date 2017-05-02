@@ -23,6 +23,11 @@ module neme.util.proxify;
  * without having to change other callers or pollute all the code with branches
  * checking the switch condition boolean to call one method or other.
  *
+ * Limitations:
+ *
+ * - Only works for classes
+ * - Target methods can't be const
+ *
  * Example:
  *
  * struct Calendar
@@ -68,13 +73,18 @@ string funcAttrsString(alias f)()
     string funcAttrs;
     foreach (attr; __traits(getFunctionAttributes, f))
     {
-        funcAttrs ~= to!string(attr) ~ " ";
+        // the delegate cant be const if we want to rebind it,
+        // even if the target is
+        static if (attr == "const")
+            continue;
+        else
+            funcAttrs ~= to!string(attr) ~ " ";
     }
     return funcAttrs;
 }
 
 string Proxify(S=typeof(this), Selectors...)()
-    if(is(S == struct) || is(S == class))
+    if(is(S == class))
 {
     import std.traits: isSomeString;
 
@@ -138,7 +148,7 @@ string Proxify(S=typeof(this), Selectors...)()
 ///
 unittest
 {
-    struct TestStruct
+    class TestClass
     {
         @nogc @safe string slow_foo(int param1) { return "slow foo"; }
         @nogc @safe string fast_foo(int param)  { return "fast foo"; }
@@ -146,10 +156,11 @@ unittest
         pure string slow_bar(string param="default", int param2=4) { return "slow bar"; }
         pure string fast_bar(string param="default", int param2=4) { return "fast bar"; }
 
-        mixin(Proxify!(TestStruct, "slow_", "fast_"));
+        mixin(Proxify!(TestClass, "slow_", "fast_"));
     }
 
-    TestStruct m;
+    import std.typecons: scoped;
+    auto m = scoped!TestClass();
 
     m.rebindProxies("fast_");
 
@@ -179,7 +190,7 @@ unittest
 
 /* Example generated code (prettyfied):
 
-Proxify!(TestStruct, "fast_", "slow_");
+Proxify!(TestClass, "fast_", "slow_");
 
 @system ReturnType!slow_foo delegate(Parameters!slow_foo) foo;
 @system ReturnType!slow_bar delegate(Parameters!slow_bar) bar;
