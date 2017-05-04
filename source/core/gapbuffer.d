@@ -73,13 +73,20 @@ enum Direction { Front, Back }
 
 // For array positions / sizes
 alias ArrayIdx = ulong;
+alias ImArrayIdx = immutable ulong;
+
 alias ArraySize = ulong;
+alias ImArraySize = immutable ulong;
 
 // For grapheme positions / sizes
 alias GrpmIdx = ulong;
-alias GrpmCount = ulong;
+alias ImGrpmIdx = immutable ulong;
 
-@safe pure
+alias GrpmCount = ulong;
+alias ImGrpmCount = immutable ulong;
+
+
+@safe pure pragma(inline)
 dchar[] asArray(StrT = string)(StrT str)
     if(is(StrT == string) || is(StrT == wstring) || is(StrT == dstring)
        || is(dchar[]) || is(wchar[]) || is(char[]))
@@ -87,18 +94,21 @@ dchar[] asArray(StrT = string)(StrT str)
     return to!(dchar[])(str);
 }
 
-public @safe
+
+public @safe pragma(inline)
 GapBuffer gapbuffer(STR)(STR s, ArraySize gapSize = DefaultGapSize)
 if (isSomeString!STR)
 {
     return GapBuffer(asArray(s), gapSize);
 }
 
-public @safe
+
+public @safe pragma(inline)
 GapBuffer gapbuffer()
 {
     return GapBuffer("", DefaultGapSize);
 }
+
 
 struct GapBuffer
 {
@@ -124,7 +134,7 @@ struct GapBuffer
 
     /// Normal constructor for a dchar[]
     public @safe
-    this(dchar[] textarray, ArraySize gapSize = DefaultGapSize)
+    this(const dchar[] textarray, ArraySize gapSize = DefaultGapSize)
     {
         enforce(gapSize > 1, "Minimum gap size must be greater than 1");
         _configuredGapSize = gapSize;
@@ -140,7 +150,7 @@ struct GapBuffer
 
     // If we have combining unicode chars (several code points for a single
     // grapheme) some methods switch to a slower unicode-striding implementation.
-    @safe
+    @safe pragma(inline)
     void checkForMultibyteChars(T)(T text)
     {
         // TODO: short circuit the exit as soon as one is found
@@ -148,8 +158,8 @@ struct GapBuffer
     }
 
     // Returns the number of graphemes in the text.
-    public @safe
-    GrpmCount countGraphemes(const dchar[] slice) const
+    public @safe const pragma(inline)
+    GrpmCount countGraphemes(const dchar[] slice)
     {
         // fast path
         if (!hasCombiningChars)
@@ -161,7 +171,7 @@ struct GapBuffer
     // Starting from an ArrayIdx, count the number of codeunits that numGraphemes letters
     // take in the given direction.
     // TODO: check that this doesnt go over the gap
-    @safe
+    @safe const pragma(inline)
     ArrayIdx idxDiffUntilGrapheme(ArrayIdx idx, GrpmCount numGraphemes, Direction dir)
     {
         if (!hasCombiningChars)
@@ -181,11 +191,11 @@ struct GapBuffer
     }
 
     // Create a new gap (empty array) with the configured size
-    @safe pure nothrow
+    @safe nothrow pragma(inline)
     dchar[] createNewGap(ArraySize gapSize=0)
     {
         // if a new gapsize was specified use that, else use the configured default
-        ArraySize newGapSize = gapSize? gapSize: configuredGapSize;
+        ImArraySize newGapSize = gapSize? gapSize: configuredGapSize;
         debug
         {
             return replicate(['-'.to!dchar], newGapSize);
@@ -229,8 +239,8 @@ struct GapBuffer
      * The returned const array will be a direct reference to the
      * contents inside the buffer.
      */
-    @property @safe nothrow pure @nogc
-    public const(dchar[]) contentBeforeGap() const
+    @property @safe nothrow @nogc const pragma(inline)
+    public const(dchar[]) contentBeforeGap()
     {
         return buffer[0..gapStart];
     }
@@ -240,8 +250,8 @@ struct GapBuffer
      * The returned const array will be a direct reference to the
      * contents inside the buffer.
      */
-    @property @safe nothrow pure @nogc
-    public const(dchar[]) contentAfterGap() const
+    @property @safe nothrow @nogc const pragma(inline)
+    public const(dchar[]) contentAfterGap()
     {
         return buffer[gapEnd .. $];
     }
@@ -253,16 +263,16 @@ struct GapBuffer
      *
      * Returns: The content of the buffer, as dchar.
      */
-    @property @safe nothrow pure
-    public const(dchar[]) content() const
+    @property @safe nothrow const pragma(inline)
+    public const(dchar[]) content()
     {
         return contentBeforeGap ~ contentAfterGap;
     }
 
     // Current gap size. The returned size is the number of chartype elements
     // (NOT bytes).
-    @property @safe nothrow pure @nogc
-    ArraySize currentGapSize() const
+    @property @safe nothrow @nogc const pragma(inline)
+    ArraySize currentGapSize()
     {
         return gapEnd - gapStart;
     }
@@ -274,8 +284,8 @@ struct GapBuffer
      * Returns:
      *     The configured gap size.
      */
-    public @property @safe nothrow pure @nogc
-    ArraySize configuredGapSize() const
+    public @property @safe nothrow pure @nogc const pragma(inline)
+    ArraySize configuredGapSize()
     {
         return _configuredGapSize;
     }
@@ -285,7 +295,7 @@ struct GapBuffer
      * at creation and reallocation time and will cause a reallocation to
      * generate a buffer with the new gap.
      */
-    public @property
+    public @property pragma(inline)
     void configuredGapSize(ArraySize newSize)
     {
         enforce(newSize > 1, "Minimum gap size must be greater than 1");
@@ -297,8 +307,8 @@ struct GapBuffer
     /// For example for a gapbuffer(string, dchar) with the content
     /// "1234" contentSize would return 16 (4 dchars * 4 bytes each) but
     /// contentSize would return 4 (dchars)
-    public @property @safe nothrow pure @nogc
-    ulong bufferByteSize() const
+    public @property @safe nothrow @nogc const pragma(inline)
+    ulong bufferByteSize()
     {
         return buffer.sizeof;
     }
@@ -307,8 +317,8 @@ struct GapBuffer
     /// For example for a gapbuffer(string, dchar) with the content
     /// "1234" contentSize would return 16 (4 dchars * 4 bytes each) but
     /// contentSize would return 4 (dchars)
-    public @property @safe nothrow pure @nogc
-    ulong contentByteSize() const
+    public @property @safe nothrow @nogc const pragma(inline)
+    ulong contentByteSize()
     {
         return (contentBeforeGap.length + contentAfterGap.length).sizeof;
     }
@@ -316,8 +326,8 @@ struct GapBuffer
     /// Return the number of visual chars (graphemes). This number can be
     /// different / from the number of chartype elements or even unicode code
     /// points.
-    public @property @safe
-    GrpmCount graphemesLength() const
+    public @property @safe const pragma(inline)
+    GrpmCount graphemesLength()
     {
         // fast path
         if (!hasCombiningChars)
@@ -331,8 +341,8 @@ struct GapBuffer
     /**
      * Returns the cursor position (the gapStart)
      */
-    public @property @safe
-    GrpmIdx cursorPos() const
+    public @property @safe const pragma(inline)
+    GrpmIdx cursorPos()
     {
         // fast path
         if (!hasCombiningChars)
@@ -345,7 +355,7 @@ struct GapBuffer
      * Sets the cursor position. The position is relative to
      * the text and ignores the gap
      */
-    public @property @safe
+    public @property @safe pragma(inline)
     void cursorPos(GrpmIdx pos)
     {
         if (cursorPos > pos) {
@@ -367,10 +377,10 @@ struct GapBuffer
         if (count <= 0 || buffer.length == 0 || gapEnd + 1 == buffer.length)
             return;
 
-        auto graphemesToCopy = min(count, countGraphemes(contentAfterGap));
-        auto idxDiff = idxDiffUntilGrapheme(gapEnd, graphemesToCopy, Direction.Front);
-        auto newGapStart = gapStart + idxDiff;
-        auto newGapEnd = gapEnd + idxDiff;
+        ImGrpmCount graphemesToCopy = min(count, countGraphemes(contentAfterGap));
+        ImArrayIdx idxDiff = idxDiffUntilGrapheme(gapEnd, graphemesToCopy, Direction.Front);
+        ImArrayIdx newGapStart = gapStart + idxDiff;
+        ImArrayIdx newGapEnd = gapEnd + idxDiff;
 
         buffer[gapEnd..newGapEnd].copy(buffer[gapStart..newGapStart]);
         gapStart = newGapStart;
@@ -388,10 +398,10 @@ struct GapBuffer
         if (count <= 0 || buffer.length == 0 || gapStart == 0)
             return;
 
-        auto graphemesToCopy = min(count, countGraphemes(contentBeforeGap));
-        auto idxDiff = idxDiffUntilGrapheme(gapStart, graphemesToCopy, Direction.Back);
-        auto newGapStart = gapStart - idxDiff;
-        auto newGapEnd = gapEnd - idxDiff;
+        ImGrpmCount graphemesToCopy = min(count, countGraphemes(contentBeforeGap));
+        ImArrayIdx idxDiff = idxDiffUntilGrapheme(gapStart, graphemesToCopy, Direction.Back);
+        ImArrayIdx newGapStart = gapStart - idxDiff;
+        ImArrayIdx newGapEnd = gapEnd - idxDiff;
 
         buffer[newGapStart..gapStart].copy(buffer[newGapEnd..gapEnd]);
         gapStart = newGapStart;
@@ -417,8 +427,8 @@ struct GapBuffer
         if (buffer.length == 0 || gapStart == 0)
             return;
 
-        auto graphemesToDel = min(count, countGraphemes(contentBeforeGap));
-        auto idxDiff = idxDiffUntilGrapheme(gapStart, graphemesToDel, Direction.Back);
+        ImGrpmCount graphemesToDel = min(count, countGraphemes(contentBeforeGap));
+        ImArrayIdx idxDiff = idxDiffUntilGrapheme(gapStart, graphemesToDel, Direction.Back);
         gapStart = max(gapStart - idxDiff, 0);
     }
 
@@ -437,8 +447,8 @@ struct GapBuffer
         if (buffer.length == 0 || gapEnd == buffer.length)
             return;
 
-        auto graphemesToDel = min(count, countGraphemes(contentAfterGap));
-        auto idxDiff = idxDiffUntilGrapheme(gapEnd, graphemesToDel, Direction.Front);
+        ImGrpmCount graphemesToDel = min(count, countGraphemes(contentAfterGap));
+        ImArrayIdx idxDiff = idxDiffUntilGrapheme(gapEnd, graphemesToDel, Direction.Front);
         gapEnd = min(gapEnd + idxDiff, buffer.length);
     }
 
@@ -449,20 +459,20 @@ struct GapBuffer
      *     text = text to add.
      */
     public
-    void addText(dchar[] text)
+    void addText(const dchar[] text)
     {
         if (text.length >= currentGapSize) {
             // doesnt fill in the gap, reallocate the buffer adding the text
             reallocate(text);
         } else {
             checkForMultibyteChars(text);
-            auto newGapStart = gapStart + text.length;
+            ImArrayIdx newGapStart = gapStart + text.length;
             text.copy(buffer[gapStart..newGapStart]);
             gapStart = newGapStart;
         }
     }
 
-    public
+    public pragma(inline)
     void addText(StrT=string)(StrT text)
         if(is(StrT == string) || is(StrT == wstring) || is(StrT == dstring))
     {
@@ -477,7 +487,7 @@ struct GapBuffer
      * text
      */
     public @safe
-    void clear(dchar[] text=null, bool moveToEndEnd=true)
+    void clear(const dchar[] text=null, bool moveToEndEnd=true)
     {
         if (moveToEndEnd) {
             buffer = text ~ createNewGap();
@@ -491,7 +501,7 @@ struct GapBuffer
         checkForMultibyteChars(text);
     }
 
-    public @safe
+    public @safe pragma(inline)
     void clear(StrT=string)(StrT text="", bool moveToEndEnd=true)
     if (isSomeString!StrT)
     {
@@ -507,9 +517,9 @@ struct GapBuffer
     // Params:
     //  textToAdd: when reallocating, add this text before/after the gap (or cursor)
     //      depending on the textDir parameter.
-    void reallocate(dchar[] textToAdd=null)
+    void reallocate(const dchar[] textToAdd=null)
     {
-        auto oldContentAfterGapSize = contentAfterGap.length;
+        ImArraySize oldContentAfterGapSize = contentAfterGap.length;
 
         // Check if the actual size of the gap is smaller than configuredSize
         // to extend the gap (and how much)
@@ -530,6 +540,7 @@ struct GapBuffer
         checkForMultibyteChars(buffer);
     }
 
+    pragma(inline)
     void reallocate(StrT=string)(StrT textToAdd)
     if (isSomeString!StrT)
     {
@@ -550,7 +561,7 @@ struct GapBuffer
     /// OpIndex: dchar[] b = gapbuffer[3];
     /// Please note that this returns a dchar[] and NOT a single
     /// dchar because the returned character could take several code points/units.
-    public @safe
+    public @safe pragma(inline)
     const(dchar[]) opIndex(GrpmIdx pos) const
     {
         // fast path
@@ -563,7 +574,7 @@ struct GapBuffer
     /**
      * index operator read: auto x = gapBuffer[0..3]
      */
-    public @safe
+    public @safe pragma(inline)
     const(dchar[]) opSlice(GrpmIdx start, GrpmIdx end) const
     {
         // fast path
@@ -578,7 +589,7 @@ struct GapBuffer
     /**
      * index operator read: auto x = gapBuffer[]
      */
-    public @safe nothrow
+    public @safe nothrow pragma(inline)
     const(dchar[]) opSlice() const
     {
         return content;
