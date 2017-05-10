@@ -13,10 +13,6 @@ import std.traits;
 import std.uni: byGrapheme, byCodePoint;
 import std.utf: byDchar;
 
-debug {
-    import std.array: replicate;
-}
-
 /**
  IMPORTANT terminology in this module:
 
@@ -31,7 +27,7 @@ debug {
  (code points) and GrpmIdx/Count when the indexes are given in graphemes.
 
  Some functions have a "fast path" that operate by chars and a "slow path" that
- operate by graphemes. The path is selected by the hasCombiningChars member that
+ operate by graphemes. The path is selected by the hasCombiningGraphemes member that
  is updated every time text is added to the buffer to the array is reallocated
  (currently no check is done when deleting characters for performance reasons).
 */
@@ -40,10 +36,10 @@ debug {
 // use the benchmark to avoid regresions in performance and test stuff
 
 // TODO: unicode mode optimization: update on changes (cursor movement, delete, add, realloc):
-// grpmCursorPos, rawCursorPos
+// grpmCursorPos
 // contentBeforeGap.grpmLength
 // contentAfterGap.grpmLength
-// graphemesLength (gb.length)
+// contentLength (gb.length)
 
 // TODO: Add invariants to check the stuff above
 
@@ -59,6 +55,8 @@ debug {
 // TODO: Try to do it @nogc, use Array from stdlib, use other strings, "fast", etc?
 
 // TODO: content() (probably) reallocates every time, think of a way to avoid that
+
+// TODO: Unify doc comment style
 
 /**
  * Struct user as Gap Buffer. It uses dchar (UTF32) characters internally for easier and
@@ -113,24 +111,28 @@ GapBuffer gapbuffer()
 struct GapBuffer
 {
     // The internal buffer holding the text and the gap
-    dchar[] buffer = null;
+    package dchar[] buffer = null;
 
     /// Counter of reallocations done since the struct was created to make room for
     /// text bigger than currentGapSize().
-    ulong reallocCount;
+    package ulong reallocCount;
 
     /// Counter the times the gap have been extended.
-    ulong gapExtensionCount;
+    private ulong gapExtensionCount;
 
     // Gap location info vars
-    ulong gapStart;
-    ulong gapEnd;
-    ulong _configuredGapSize;
+    package ulong gapStart;
+    package ulong gapEnd;
+    private ulong _configuredGapSize;
 
     // If we have combining unicode chars (several code points for a single
     // grapheme) some methods switch to a slower unicode-striding implementation.
-    // The detection and update of this boolean is done checkForMultibyteChars().
-    bool hasCombiningChars = false;
+    // The detection and update of this boolean is done checkCombinedGraphemes().
+    package bool hasCombiningGraphemes = false;
+    /// This will use the fast array-based version of all text operations even if the buffer
+    /// contains multi code point graphemes. Enabling this will make multi cp graphemes
+    /// to don't display correctly.
+    public bool forceFastMode = false;
 
     /// Normal constructor for a dchar[]
     public @safe
@@ -144,25 +146,38 @@ struct GapBuffer
     /// Overloaded constructor for string types
     public @safe
     this(Str=string)(Str text, ArraySize gapSize = DefaultGapSize)
+    if (isSomeString!Str)
     {
         this(asArray(text), gapSize);
     }
 
     // If we have combining unicode chars (several code points for a single
     // grapheme) some methods switch to a slower unicode-striding implementation.
-    @safe pragma(inline)
-    void checkForMultibyteChars(T)(T text)
+    // NOTE: this sets the global state of hasCombiningGraphemes so when checking
+    // a block of text smaller than the total only call it if hasCombiningGraphemes
+    // if false:
+    // if (!hasCombiningGraphemes) checkCombinedGraphemes()
+    package @safe pragma(inline)
+    void checkCombinedGraphemes(const(dchar[]) text=null)
     {
-        // TODO: short circuit the exit as soon as one is found
-        hasCombiningChars = text.byCodePoint.count != text.byGrapheme.count;
+        // TODO: short circuit the exit as soon as one difference is found
+        if (text is null) {
+            // check all the text (for full loads and reallocations)
+            hasCombiningGraphemes = content.byCodePoint.count != content.byGrapheme.count;
+        } else if (!hasCombiningGraphemes) {
+            // only a small text: only do the check if we didn't
+            // had combined chars before (to avoid setting it to "false"
+            // when it already had combined chars but the new text doesn't)
+            hasCombiningGraphemes = text.byCodePoint.count != text.byGrapheme.count;
+        }
     }
 
     // Returns the number of graphemes in the text.
-    public @safe const pragma(inline)
-    GrpmCount countGraphemes(const dchar[] slice)
+    public @safe const pragma(inline) inout
+    inout(GrpmCount) countGraphemes(const dchar[]  slice)
     {
         // fast path
-        if (!hasCombiningChars)
+        if (forceFastMode || !hasCombiningGraphemes)
             return slice.length;
 
         return slice.byGrapheme.count;
@@ -171,13 +186,13 @@ struct GapBuffer
     // Starting from an ArrayIdx, count the number of codeunits that numGraphemes letters
     // take in the given direction.
     // TODO: check that this doesnt go over the gap
-    @safe const pragma(inline)
+    package @safe const pragma(inline)
     ArrayIdx idxDiffUntilGrapheme(ArrayIdx idx, GrpmCount numGraphemes, Direction dir)
     {
-        if (!hasCombiningChars)
+        // fast path
+        if (forceFastMode || !hasCombiningGraphemes)
             return numGraphemes;
 
-        // slow path
         if (numGraphemes == 0)
             return 0;
 
@@ -191,13 +206,14 @@ struct GapBuffer
     }
 
     // Create a new gap (empty array) with the configured size
-    @safe nothrow pragma(inline)
+    package @safe nothrow pragma(inline)
     dchar[] createNewGap(ArraySize gapSize=0)
     {
         // if a new gapsize was specified use that, else use the configured default
         ImArraySize newGapSize = gapSize? gapSize: configuredGapSize;
         debug
         {
+            import std.array: replicate;
             return replicate(['-'.to!dchar], newGapSize);
         }
         else
@@ -215,7 +231,7 @@ struct GapBuffer
     {
         writeln("gapstart: ", gapStart, " gapend: ", gapEnd, " len: ", buffer.length,
                 " currentGapSize: ", currentGapSize, " configuredGapSize: ", configuredGapSize,
-                " graphemesLength: ", graphemesLength);
+                " contentLength: ", contentLength);
         writeln("BeforeGap:|", contentBeforeGap,"|");
         writeln("AfterGap:|", contentAfterGap, "|");
         writeln("Text content:|", content, "|");
@@ -239,8 +255,8 @@ struct GapBuffer
      * The returned const array will be a direct reference to the
      * contents inside the buffer.
      */
-    @property @safe nothrow @nogc const pragma(inline)
-    public const(dchar[]) contentBeforeGap()
+    public @property @safe nothrow @nogc const pragma(inline)
+    const(dchar[]) contentBeforeGap()
     {
         return buffer[0..gapStart];
     }
@@ -250,8 +266,8 @@ struct GapBuffer
      * The returned const array will be a direct reference to the
      * contents inside the buffer.
      */
-    @property @safe nothrow @nogc const pragma(inline)
-    public const(dchar[]) contentAfterGap()
+    public @property @safe nothrow @nogc const pragma(inline)
+    const(dchar[]) contentAfterGap()
     {
         return buffer[gapEnd .. $];
     }
@@ -263,15 +279,15 @@ struct GapBuffer
      *
      * Returns: The content of the buffer, as dchar.
      */
-    @property @safe nothrow const pragma(inline)
-    public const(dchar[]) content()
+    public @property @safe nothrow const pragma(inline)
+    const(dchar[]) content()
     {
         return contentBeforeGap ~ contentAfterGap;
     }
 
     // Current gap size. The returned size is the number of chartype elements
     // (NOT bytes).
-    @property @safe nothrow @nogc const pragma(inline)
+    public @property @safe nothrow @nogc const pragma(inline)
     ArraySize currentGapSize()
     {
         return gapEnd - gapStart;
@@ -295,48 +311,23 @@ struct GapBuffer
      * at creation and reallocation time and will cause a reallocation to
      * generate a buffer with the new gap.
      */
-    public @property pragma(inline)
+    public @property @safe pragma(inline)
     void configuredGapSize(ArraySize newSize)
     {
         enforce(newSize > 1, "Minimum gap size must be greater than 1");
         _configuredGapSize = newSize;
         reallocate();
     }
-
-    /// Returns the full size of the internal buffer including the gap in bytes
-    /// For example for a gapbuffer(string, dchar) with the content
-    /// "1234" contentSize would return 16 (4 dchars * 4 bytes each) but
-    /// contentSize would return 4 (dchars)
-    public @property @safe nothrow @nogc const pragma(inline)
-    ulong bufferByteSize()
-    {
-        return buffer.sizeof;
-    }
-
-    /// Returns the size, in bytes, of the textual part of the buffer without the gap
-    /// For example for a gapbuffer(string, dchar) with the content
-    /// "1234" contentSize would return 16 (4 dchars * 4 bytes each) but
-    /// contentSize would return 4 (dchars)
-    public @property @safe nothrow @nogc const pragma(inline)
-    ulong contentByteSize()
-    {
-        return (contentBeforeGap.length + contentAfterGap.length).sizeof;
-    }
-
     /// Return the number of visual chars (graphemes). This number can be
     /// different / from the number of chartype elements or even unicode code
     /// points.
     public @property @safe const pragma(inline)
-    GrpmCount graphemesLength()
+    GrpmCount contentLength()
     {
-        // fast path
-        if (!hasCombiningChars)
-            return contentBeforeGap.length + contentAfterGap.length;
-
-        return contentBeforeGap.byGrapheme.count +
-               contentAfterGap.byGrapheme.count;
+        // XXX use indexes
+        return countGraphemes(contentBeforeGap) + countGraphemes(contentAfterGap);
     }
-    public alias length = graphemesLength;
+    public alias length = contentLength;
 
     /**
      * Returns the cursor position (the gapStart)
@@ -345,9 +336,10 @@ struct GapBuffer
     GrpmIdx cursorPos()
     {
         // fast path
-        if (!hasCombiningChars)
+        if (forceFastMode || !hasCombiningGraphemes)
             return gapStart;
 
+        // XXX use indexes
         return countGraphemes(contentBeforeGap);
     }
 
@@ -373,6 +365,8 @@ struct GapBuffer
     public @safe
     void cursorForward(GrpmCount count)
     {
+        // XXX: update indexes
+        // XXX: use indexes (contentAfterGapGrpmLen)
 
         if (count <= 0 || buffer.length == 0 || gapEnd + 1 == buffer.length)
             return;
@@ -395,6 +389,9 @@ struct GapBuffer
     public @safe
     void cursorBackward(GrpmCount count)
     {
+        // XXX: update indexes
+        // XXX: use indexes (contentBeforeGapGrpmLen)
+
         if (count <= 0 || buffer.length == 0 || gapStart == 0)
             return;
 
@@ -408,11 +405,11 @@ struct GapBuffer
         gapEnd = newGapEnd;
     }
 
-    // Note: this wont call checkForMultibyteChars because it would have to check
+    // Note: this wont call checkCombinedGraphemes because it would have to check
     // the full text and it could be slow, so for example on a text with the slow
     // path enabled because it has combining chars deleting all the combining
     // chars with this method wont switch to the fast path like adding text do.
-    // If you need that, call checkForMultibyteChars manually or wait for reallocation.
+    // If you need that, call checkCombinedGraphemes manually or wait for reallocation.
 
     /**
      * Delete count chars to the left of the cursor position, moving the gap (and the cursor) back
@@ -424,6 +421,9 @@ struct GapBuffer
     public @safe
     void deleteLeft(GrpmCount count)
     {
+        // XXX: update indexes
+        // XXX: use indexes (contentBeforeGapGrpmLen)
+
         if (buffer.length == 0 || gapStart == 0)
             return;
 
@@ -444,6 +444,9 @@ struct GapBuffer
     public @safe
     void deleteRight(GrpmCount count)
     {
+        // XXX: update indexes
+        // XXX: use indexes (contentAfterGapGrpmLen)
+
         if (buffer.length == 0 || gapEnd == buffer.length)
             return;
 
@@ -458,23 +461,25 @@ struct GapBuffer
      * Params:
      *     text = text to add.
      */
-    public
+    public @safe
     void addText(const dchar[] text)
     {
+        // XXX: update indexes
+
         if (text.length >= currentGapSize) {
             // doesnt fill in the gap, reallocate the buffer adding the text
             reallocate(text);
         } else {
-            checkForMultibyteChars(text);
+            checkCombinedGraphemes(text);
             ImArrayIdx newGapStart = gapStart + text.length;
             text.copy(buffer[gapStart..newGapStart]);
             gapStart = newGapStart;
         }
     }
 
-    public pragma(inline)
+    public @safe pragma(inline)
     void addText(StrT=string)(StrT text)
-        if(is(StrT == string) || is(StrT == wstring) || is(StrT == dstring))
+        if (isSomeString!StrT)
     {
         addText(asArray(text));
     }
@@ -489,6 +494,7 @@ struct GapBuffer
     public @safe
     void clear(const dchar[] text=null, bool moveToEndEnd=true)
     {
+        // XXX: update indexes
         if (moveToEndEnd) {
             buffer = text ~ createNewGap();
             gapStart = text.length;
@@ -498,7 +504,7 @@ struct GapBuffer
             gapStart = 0;
             gapEnd = _configuredGapSize;
         }
-        checkForMultibyteChars(text);
+        checkCombinedGraphemes();
     }
 
     public @safe pragma(inline)
@@ -517,8 +523,11 @@ struct GapBuffer
     // Params:
     //  textToAdd: when reallocating, add this text before/after the gap (or cursor)
     //      depending on the textDir parameter.
+    package @trusted
     void reallocate(const dchar[] textToAdd=null)
     {
+        // XXX: update indexes
+
         ImArraySize oldContentAfterGapSize = contentAfterGap.length;
 
         // Check if the actual size of the gap is smaller than configuredSize
@@ -537,10 +546,10 @@ struct GapBuffer
         gapEnd = buffer.length - oldContentAfterGapSize;
         reallocCount += 1;
 
-        checkForMultibyteChars(buffer);
+        checkCombinedGraphemes();
     }
 
-    pragma(inline)
+    package @safe pragma(inline)
     void reallocate(StrT=string)(StrT textToAdd)
     if (isSomeString!StrT)
     {
@@ -556,7 +565,7 @@ struct GapBuffer
     /**
      * $ (length) operator
      */
-    public alias opDollar = graphemesLength;
+    public alias opDollar = contentLength;
 
     /// OpIndex: dchar[] b = gapbuffer[3];
     /// Please note that this returns a dchar[] and NOT a single
@@ -565,7 +574,7 @@ struct GapBuffer
     const(dchar[]) opIndex(GrpmIdx pos) const
     {
         // fast path
-        if (!hasCombiningChars)
+        if (forceFastMode || !hasCombiningGraphemes)
             return [content[pos]];
 
         return content.byGrapheme.drop(pos).take(1).byCodePoint.array.to!(dchar[]);
@@ -578,7 +587,7 @@ struct GapBuffer
     const(dchar[]) opSlice(GrpmIdx start, GrpmIdx end) const
     {
         // fast path
-        if (!hasCombiningChars) {
+        if (forceFastMode || !hasCombiningGraphemes) {
             return content[start..end];
         }
 

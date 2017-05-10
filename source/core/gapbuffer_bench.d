@@ -5,7 +5,7 @@ import neme.core.gapbuffer;
 import std.conv: to;
 import std.datetime;
 import std.stdio;
-import std.typecons: scoped;
+import std.typecons;
 
 
 //private void bench_overlaps1(uint iterations)
@@ -164,9 +164,98 @@ private void bench_appendarray(uint iterations)
 }
 }
 
+/** This benchmarks the performance of an emulated coding session doing these operations:
+
+    1. Opening a buffer (optionally this can be ignored in the benchmark)
+    2. Writing small chunk of text, going back 10 characters, deleting 2, inserting 2,
+       another chunk, replace the last character, chunk, back 10, delete 8 (word), add 10,
+       deleting 160 to the right (two lines), adding 160, repeat.
+*/
+// TODO: add some other operations:
+// Searches
+// Replacements
+// Operations on text objects
+// ...etc
+private void benchProgrammingSessionCP()
+{
+    // test 1: combining chars (slow path enabled)
+    enum code = import("fixtures/testbench_code_multicp.txt");
+    enum gapsize = 1024*32; // seems to be the sweet spot for this test (we're not testing allocation)
+    GapBuffer preLoadedGapBuffer = void;
+
+    void editSession(string code, Flag!"forceFastMode" forceFastMode, Flag!"doLoad" doLoad=Yes.doLoad) {
+        // 32kb of buffer seems to be a sweet spot for this test
+        GapBuffer g = void;
+        if (doLoad) {
+            g = gapbuffer("", gapsize);
+            g.forceFastMode = forceFastMode;
+            g.clear(code);
+            g.cursorPos = g.contentLength / 2;
+        } else {
+            g = preLoadedGapBuffer;
+        }
+
+        foreach (i; 0..100) {
+            g.addText("private void benchProgrammingSessionCP(bool benchBufferLoad = true) {\n");
+            g.cursorBackward(10);
+            g.addText("XX");
+            g.cursorForward(12);
+            g.addText("enum code = import(\"fixtures/testbench_code_multicp.txt\");\nY");
+            g.deleteLeft(1);
+            g.addText("X");
+            g.addText("immutable fillreplicate = () => a = replicate(filler, 100);\n");
+            g.cursorBackward(10);
+            g.deleteRight(8);
+            g.addText("1234567890 ");
+            g.cursorForward(2);
+            g.deleteRight(160);
+            g.addText("// With a lot of overlap, this is much faster. I also benefits a lot from release mode.\n");
+            g.addText("// is much faster specially when it doesnt need to extend much the currentGap blablabla.\n");
+            g.addText("// End of the loop!\n");
+            g.cursorBackward(200);
+        }
+    }
+
+    enum iterations = 10;
+
+    auto editSessionSlow   = () => editSession(code, No.forceFastMode);
+    auto editSessionFast   = () => editSession(code, Yes.forceFastMode);
+    auto editSessionNoLoad = () => editSession(code, Yes.forceFastMode, No.doLoad);
+
+    TickDuration[1] duration = void;
+
+    // best benchmark done with dub run --compiler=ldc2 --build=release-nobounds
+    // dmd / dmd-release / ldc / ldc-release (10 iterations)
+
+    // before indexes:
+    // 3 mins 1 sec || release: 51 secs || ldc: 2 mins 36 secs || ldc-release: 18.21 secs
+    duration = benchmark!editSessionSlow(iterations);
+    writeln("Edit session, slow operations: ", to!Duration(duration[0]));
+
+    // before indexes:
+    // 1 min 54 secs || release: 33 secs || ldc: 1min 38 secs || ldc-release: 11.66 secs
+    preLoadedGapBuffer = gapbuffer(code, gapsize);
+    preLoadedGapBuffer.forceFastMode = false;
+    duration = benchmark!editSessionNoLoad(iterations);
+    writeln("Edit session, slow operations, not including initial load: ", to!Duration(duration[0]));
+
+    // before indexes:
+    // 19 msecs || release: 6 msecs || ldc: 16 msecs || ldc-release: 2.2 msecs
+    duration = benchmark!editSessionFast(1);
+    writeln("Edit session, fast operations: ", to!Duration(duration[0]));
+
+    // before indexes:
+    // 605 μs || release: 395 μs || ldc: 395 μs || ldc-release: 179 μs
+    preLoadedGapBuffer = gapbuffer(code, gapsize);
+    preLoadedGapBuffer.forceFastMode = true;
+    duration = benchmark!editSessionNoLoad(iterations);
+    writeln("Edit session, fast operations, not including initial load: ", to!Duration(duration[0]));
+}
+
 void bench()
 {
     auto g = gapbuffer();
+    benchProgrammingSessionCP();
 
     //uint iterations = 10_000_000;
     //bench_overlaps1(iterations);
