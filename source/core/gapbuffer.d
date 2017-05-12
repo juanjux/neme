@@ -13,6 +13,7 @@ import std.traits;
 import std.typecons: Typedef, Nullable;
 import std.uni: byGrapheme, byCodePoint;
 import std.utf: byDchar;
+import core.memory: GC;
 
 /**
  IMPORTANT terminology in this module:
@@ -626,6 +627,7 @@ struct GapBuffer
     package @trusted
     void reallocate(const BufferType textToAdd)
     {
+        GC.reserve(buffer.length + textToAdd.length + _configuredGapSize + (1024*24));
         ImArraySize oldContentAfterGapSize = contentAfterGap.length;
 
         // Check if the actual size of the gap is smaller than configuredSize
@@ -646,10 +648,12 @@ struct GapBuffer
 
         checkCombinedGraphemes();
         updateGrpmLens();
+        GC.minimize();
     }
     package @trusted
     void reallocate()
     {
+        GC.reserve(buffer.length + _configuredGapSize + (1024*24));
         ImArraySize oldContentAfterGapSize = contentAfterGap.length;
 
         // Check if the actual size of the gap is smaller than configuredSize
@@ -669,6 +673,7 @@ struct GapBuffer
 
         checkCombinedGraphemes();
         updateGrpmLens();
+        GC.minimize();
     }
 
     package @safe pragma(inline)
