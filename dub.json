@@ -16,5 +16,6 @@
 	"subPackages": [],
 	"excludedSourceFiles": ["source/core/discarded.d", "source/core/exploratory/*"],
 	"dependencies": {
+	    "fast": "~master"
 	}
 }

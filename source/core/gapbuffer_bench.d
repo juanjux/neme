@@ -227,9 +227,12 @@ private void benchProgrammingSessionCP()
     // best benchmark done with dub run --compiler=ldc2 --build=release-nobounds
     // dmd / dmd-release / ldc / ldc-release (10 iterations)
 
-    // ==================================================================================
-    // "Slow indexing" (compatible with Unicode multi CP graphemes) =====================
-    // ==================================================================================
+
+    /+
+     ╔══════════════════════════════════════════════════════════════════════════════
+     ║ ⚑ "Slow indexing" (compatible with Unicode multi CP graphemes)
+     ╚══════════════════════════════════════════════════════════════════════════════
+    +/
     // Optimization log:
     // - 11/05/2017: Adding the unicode indexes improved performance on "slow" mode a lot
     //   without slowing performance on "fast" mode.
@@ -244,10 +247,11 @@ private void benchProgrammingSessionCP()
     duration = benchmark!editSessionNoLoad(iterations);
     writeln("Edit session, slow operations, not including initial load: ", to!Duration(duration[0]));
 
-    // =================================================================================
-    // "Fast indexing" (incompatible with Unicode multi CP graphemes) ==================
-    // =================================================================================
-
+    /+
+     ╔══════════════════════════════════════════════════════════════════════════════
+     ║ ⚑ "Fast indexing" (incompatible with Unicode multi CP graphemes)
+     ╚══════════════════════════════════════════════════════════════════════════════
+    +/
     // 19 msecs || release: 6 msecs || ldc: 25 msecs || ldc-release: 2.17 msecs
     duration = benchmark!editSessionFast(1);
     writeln("Edit session, fast operations: ", to!Duration(duration[0]));
