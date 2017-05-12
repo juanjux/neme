@@ -10,11 +10,9 @@ import std.range.primitives: popFrontExactly;
 import std.range: take, drop, array, tail;
 import std.stdio;
 import std.traits;
-import std.typecons: Typedef;
+import std.typecons: Typedef, Nullable;
 import std.uni: byGrapheme, byCodePoint;
 import std.utf: byDchar;
-
-import fast.buffer: RaiiArray;
 
 /**
  IMPORTANT terminology in this module:
@@ -35,8 +33,6 @@ import fast.buffer: RaiiArray;
  (currently no check is done when deleting characters for performance reasons).
 */
 
-// TODO: Add invariants to check the stuff above
-
 // TODO: add a demo mode (you type but the buffer representation is shown in
 //       real time as you type or move the cursor)
 
@@ -52,16 +48,14 @@ import fast.buffer: RaiiArray;
 
 // TODO: Unify doc comment style
 
-// TODO: use checked integers?
-
 /**
  * Struct user as Gap Buffer. It uses dchar (UTF32) characters internally for easier and
  * probably faster dealing with unicode chars since 1 dchar = 1 unicode char and slices are just direct indexes
  * without having to use libraries to get the indices of code points.
  */
 
-alias gbBufferElement = dchar;
-alias gbBufferType = gbBufferElement[];
+alias BufferElement = dchar;
+alias BufferType = BufferElement[];
 
 // This seems to work pretty well for common use cases, can be changed
 // with the property configuredGapSize
@@ -88,11 +82,11 @@ public alias ImGrpmCount = immutable GrpmIdx;
 
 
 @safe pure pragma(inline)
-gbBufferElement[] asArray(StrT = string)(StrT str)
+BufferType asArray(StrT = string)(StrT str)
     if(is(StrT == string) || is(StrT == wstring) || is(StrT == dstring)
-       || is(gbBufferElement[]) || is(wchar[]) || is(char[]))
+       || is(BufferType) || is(wchar[]) || is(char[]))
 {
-    return to!(gbBufferElement[])(str);
+    return to!(BufferType)(str);
 }
 
 @safe pure pragma(inline)
@@ -124,8 +118,7 @@ GapBuffer gapbuffer()
 struct GapBuffer
 {
     // The internal buffer holding the text and the gap
-    //package gbBufferElement[] buffer = null;
-    package RaiiArray!gbBufferElement buffer;
+    package BufferType buffer = null;
 
     /// Counter of reallocations done since the struct was created to make room for
     /// text bigger than currentGapSize().
@@ -155,9 +148,9 @@ struct GapBuffer
     /// to don't display correctly.
     public bool forceFastMode = false;
 
-    /// Normal constructor for a gbBufferElement[]
+    /// Normal constructor for a BufferType
     public @safe
-    this(const gbBufferElement[] textarray, ArraySize gapSize = DefaultGapSize)
+    this(const BufferType textarray, ArraySize gapSize = DefaultGapSize)
     {
         enforce(gapSize > 1, "Minimum gap size must be greater than 1");
         _configuredGapSize = gapSize;
@@ -179,23 +172,28 @@ struct GapBuffer
     // if false:
     // if (!hasCombiningGraphemes) checkCombinedGraphemes()
     package @safe pragma(inline)
-    void checkCombinedGraphemes(const(gbBufferElement[]) text=null)
+    void checkCombinedGraphemes(const(BufferType) text, bool forceCheck = false)
     {
         // TODO: short circuit the exit as soon as one difference is found
-        if (text is null) {
-            // check all the text (for full loads and reallocations)
-            hasCombiningGraphemes = content.byCodePoint.count != content.byGrapheme.count;
-        } else if (!hasCombiningGraphemes) {
-            // only a small text: only do the check if we didn't
-            // had combined chars before (to avoid setting it to "false"
-            // when it already had combined chars but the new text doesn't)
+        // only a small text: only do the check if we didn't
+        // had combined chars before (to avoid setting it to "false"
+        // when it already had combined chars but the new text doesn't)
+        if(forceCheck || !hasCombiningGraphemes) {
             hasCombiningGraphemes = text.byCodePoint.count != text.byGrapheme.count;
         }
     }
+    package @safe pragma(inline)
+    void checkCombinedGraphemes()
+    {
+        // TODO: short circuit the exit as soon as one difference is found
+        // check all the text (for full loads and reallocations)
+        checkCombinedGraphemes(content, true);
+    }
+
 
     // Returns the number of graphemes in the text.
     public @safe const pragma(inline) inout
-    inout(GrpmCount) countGraphemes(const gbBufferElement[]  slice)
+    inout(GrpmCount) countGraphemes(const BufferType  slice)
     {
         // fast path
         if (forceFastMode || !hasCombiningGraphemes)
@@ -228,18 +226,18 @@ struct GapBuffer
 
     // Create a new gap (empty array) with the configured size
     package @safe nothrow pragma(inline)
-    gbBufferElement[] createNewGap(ArraySize gapSize=0)
+    BufferType createNewGap(ArraySize gapSize=0)
     {
         // if a new gapsize was specified use that, else use the configured default
         ImArraySize newGapSize = gapSize? gapSize: configuredGapSize;
         debug
         {
             import std.array: replicate;
-            return replicate(['-'.to!gbBufferElement], newGapSize);
+            return replicate(['-'.to!BufferElement], newGapSize);
         }
         else
         {
-            return new gbBufferElement[](newGapSize);
+            return new BufferType(newGapSize);
         }
     }
 
@@ -277,7 +275,7 @@ struct GapBuffer
      * contents inside the buffer.
      */
     public @property @safe nothrow @nogc const pragma(inline)
-    const(gbBufferElement[]) contentBeforeGap()
+    const(BufferType) contentBeforeGap()
     {
         return buffer[0..gapStart];
     }
@@ -288,7 +286,7 @@ struct GapBuffer
      * contents inside the buffer.
      */
     public @property @safe nothrow @nogc const pragma(inline)
-    const(gbBufferElement[]) contentAfterGap()
+    const(BufferType) contentAfterGap()
     {
         return buffer[gapEnd .. $];
     }
@@ -298,10 +296,10 @@ struct GapBuffer
      * and contentAfterGap the returned array will be newly instantiated, so
      * this method will be slower than the other two.
      *
-     * Returns: The content of the buffer, as gbBufferElement.
+     * Returns: The content of the buffer, as BufferElement.
      */
     public @property @safe nothrow const pragma(inline)
-    const(gbBufferElement[]) content()
+    const(BufferType) content()
     {
         return contentBeforeGap ~ contentAfterGap;
     }
@@ -520,7 +518,7 @@ struct GapBuffer
      *     text = text to add.
      */
     public @trusted
-    ImGrpmIdx addText(const gbBufferElement[] text)
+    ImGrpmIdx addText(const BufferType text)
     out(res) { assert(res > 0); }
     body
     {
@@ -577,7 +575,7 @@ struct GapBuffer
      * text
      */
     public @safe
-    ImGrpmIdx clear(const gbBufferElement[] text=null, bool moveToEndEnd=true)
+    ImGrpmIdx clear(const BufferType text, bool moveToEndEnd=true)
     out(res) { assert(res > 0); }
     body
     {
@@ -592,6 +590,18 @@ struct GapBuffer
         }
 
         checkCombinedGraphemes();
+        updateGrpmLens();
+        return cursorPos;
+    }
+    public @safe
+    ImGrpmIdx clear()
+    out(res) { assert(res > 0); }
+    body
+    {
+        buffer = createNewGap();
+        gapStart = 0;
+        gapEnd = _configuredGapSize;
+
         updateGrpmLens();
         return cursorPos;
     }
@@ -612,14 +622,15 @@ struct GapBuffer
     // Params:
     //  textToAdd: when reallocating, add this text before/after the gap (or cursor)
     //      depending on the textDir parameter.
+    // FIXME XXX: factorize these two
     package @trusted
-    void reallocate(const gbBufferElement[] textToAdd=null)
+    void reallocate(const BufferType textToAdd)
     {
         ImArraySize oldContentAfterGapSize = contentAfterGap.length;
 
         // Check if the actual size of the gap is smaller than configuredSize
         // to extend the gap (and how much)
-        gbBufferElement[] gapExtension;
+        BufferType gapExtension;
         if (currentGapSize >= _configuredGapSize) {
             // no need to extend the gap
             gapExtension.length = 0;
@@ -630,6 +641,29 @@ struct GapBuffer
 
         buffer.insertInPlace(gapStart, textToAdd, gapExtension);
         gapStart += textToAdd.length;
+        gapEnd = buffer.length - oldContentAfterGapSize;
+        reallocCount += 1;
+
+        checkCombinedGraphemes();
+        updateGrpmLens();
+    }
+    package @trusted
+    void reallocate()
+    {
+        ImArraySize oldContentAfterGapSize = contentAfterGap.length;
+
+        // Check if the actual size of the gap is smaller than configuredSize
+        // to extend the gap (and how much)
+        BufferType gapExtension;
+        if (currentGapSize >= _configuredGapSize) {
+            // no need to extend the gap
+            gapExtension.length = 0;
+        } else {
+            gapExtension = createNewGap(configuredGapSize - currentGapSize);
+            gapExtensionCount += 1;
+        }
+
+        buffer.insertInPlace(gapStart, gapExtension);
         gapEnd = buffer.length - oldContentAfterGapSize;
         reallocCount += 1;
 
@@ -655,20 +689,20 @@ struct GapBuffer
      */
     public alias opDollar = contentGrpmLen;
 
-    /// OpIndex: gbBufferElement[] b = gapbuffer[3];
-    /// Please note that this returns a gbBufferElement[] and NOT a single
-    /// gbBufferElement because the returned character could take several code points/units.
+    /// OpIndex: BufferType b = gapbuffer[3];
+    /// Please note that this returns a BufferType and NOT a single
+    /// BufferElement because the returned character could take several code points/units.
     public @safe pragma(inline)
-    const(gbBufferElement[]) opIndex(GrpmIdx pos) const
+    const(BufferType) opIndex(GrpmIdx pos) const
     {
         // fast path
         if (forceFastMode || !hasCombiningGraphemes)
             return [content[pos.to!long]];
 
-        return content.byGrapheme.drop(pos.to!long).take(1).byCodePoint.array.to!(gbBufferElement[]);
+        return content.byGrapheme.drop(pos.to!long).take(1).byCodePoint.array.to!(BufferType);
     }
     public @safe pragma(inline)
-    const(gbBufferElement[]) opIndex(long pos) const
+    const(BufferType) opIndex(long pos) const
     {
         return opIndex(pos.GrpmIdx);
     }
@@ -677,7 +711,7 @@ struct GapBuffer
      * index operator read: auto x = gapBuffer[0..3]
      */
     public @trusted pragma(inline)
-    const(gbBufferElement[]) opSlice(GrpmIdx start, GrpmIdx end) const
+    const(BufferType) opSlice(GrpmIdx start, GrpmIdx end) const
     {
         // fast path
         if (forceFastMode || !hasCombiningGraphemes) {
@@ -687,10 +721,10 @@ struct GapBuffer
         // slow path
         return content.byGrapheme.drop(start.to!long)
                       .take(end.to!long - start.to!long)
-                      .byCodePoint.array.to!(gbBufferElement[]);
+                      .byCodePoint.array.to!(BufferType);
     }
     public @safe pragma(inline)
-    const(gbBufferElement[]) opSlice(long start, long end) const
+    const(BufferType) opSlice(long start, long end) const
     {
         return opSlice(start.GrpmIdx, end.GrpmIdx);
     }
@@ -699,7 +733,7 @@ struct GapBuffer
      * index operator read: auto x = gapBuffer[]
      */
     public @safe nothrow pragma(inline)
-    const(gbBufferElement[]) opSlice() const
+    const(BufferType) opSlice() const
     {
         return content;
     }
