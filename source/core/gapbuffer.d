@@ -6,10 +6,11 @@ import std.array : appender, insertInPlace, join, minimallyInitializedArray;
 import std.container.array : Array;
 import std.conv;
 import std.exception: assertNotThrown, assertThrown, enforce;
-import std.range: take, drop, array, tail;
 import std.range.primitives: popFrontExactly;
+import std.range: take, drop, array, tail;
 import std.stdio;
 import std.traits;
+import std.typecons: Typedef;
 import std.uni: byGrapheme, byCodePoint;
 import std.utf: byDchar;
 
@@ -32,14 +33,12 @@ import std.utf: byDchar;
  (currently no check is done when deleting characters for performance reasons).
 */
 
-// TODO: Benchmark emulating several different text editing sessions,
-// use the benchmark to avoid regresions in performance and test stuff
+// TODO: unittests of the unicode caches
 
 // TODO: unicode mode optimization: update on changes (cursor movement, delete, add, realloc):
 // grpmCursorPos
 // contentBeforeGap.grpmLength
 // contentAfterGap.grpmLength
-// contentLength (gb.length)
 
 // TODO: Add invariants to check the stuff above
 
@@ -58,31 +57,36 @@ import std.utf: byDchar;
 
 // TODO: Unify doc comment style
 
+// TODO: use checked integers?
+
 /**
  * Struct user as Gap Buffer. It uses dchar (UTF32) characters internally for easier and
  * probably faster dealing with unicode chars since 1 dchar = 1 unicode char and slices are just direct indexes
  * without having to use libraries to get the indices of code points.
  */
 
-// TODO: increase
-enum DefaultGapSize = 100;
+// This seems to work pretty well for common use cases, can be changed
+// with the property configuredGapSize
+enum DefaultGapSize = 32 * 1024;
 
 enum Direction { Front, Back }
 
 // For array positions / sizes
+// TODO: create real types to avoid bugs (check performance)
 alias ArrayIdx = ulong;
 alias ImArrayIdx = immutable ulong;
 
 alias ArraySize = ulong;
 alias ImArraySize = immutable ulong;
 
-// For grapheme positions / sizes
-alias GrpmIdx = ulong;
-alias ImGrpmIdx = immutable ulong;
+// For grapheme positions / sizes. These are Typedefs to avoid bugs
+// related to mixing ArrayIdx's with GrpmIdx's
+public alias GrpmIdx = Typedef!(ulong, ulong.init, "grapheme");
+//public alias GrpmIdx = Typedef!(ulong, ulong.init, "grapheme");
+public alias ImGrpmIdx = immutable GrpmIdx;
 
-alias GrpmCount = ulong;
-alias ImGrpmCount = immutable ulong;
-
+public alias GrpmCount = GrpmIdx;
+public alias ImGrpmCount = immutable GrpmIdx;
 
 @safe pure pragma(inline)
 dchar[] asArray(StrT = string)(StrT str)
@@ -107,6 +111,8 @@ GapBuffer gapbuffer()
     return GapBuffer("", DefaultGapSize);
 }
 
+alias gbBufferElement = dchar;
+alias gbBufferType = gbBufferElement[];
 
 struct GapBuffer
 {
@@ -121,9 +127,18 @@ struct GapBuffer
     private ulong gapExtensionCount;
 
     // Gap location info vars
-    package ulong gapStart;
-    package ulong gapEnd;
+    package ArrayIdx gapStart;
+    package ArrayIdx gapEnd;
     private ulong _configuredGapSize;
+
+    // Catching some indexes and lengths to avoid having to iterate
+    // by grapheme over unicode stuff when the "slow" multi-codepoint
+    // mode is enabled
+    // TODO: tests
+    package GrpmIdx cursorPosGrpm = 1uL;
+    package GrpmCount contentBeforeGapGrpmLen;
+    package GrpmCount contentAfterGapGrpmLen;
+
 
     // If we have combining unicode chars (several code points for a single
     // grapheme) some methods switch to a slower unicode-striding implementation.
@@ -178,29 +193,29 @@ struct GapBuffer
     {
         // fast path
         if (forceFastMode || !hasCombiningGraphemes)
-            return slice.length;
+            return GrpmCount(slice.length);
 
-        return slice.byGrapheme.count;
+        return GrpmCount(slice.byGrapheme.count);
     }
 
     // Starting from an ArrayIdx, count the number of codeunits that numGraphemes letters
     // take in the given direction.
     // TODO: check that this doesnt go over the gap
-    package @safe const pragma(inline)
+    package @trusted const pragma(inline)
     ArrayIdx idxDiffUntilGrapheme(ArrayIdx idx, GrpmCount numGraphemes, Direction dir)
     {
         // fast path
         if (forceFastMode || !hasCombiningGraphemes)
-            return numGraphemes;
+            return numGraphemes.to!ArrayIdx;
 
-        if (numGraphemes == 0)
-            return 0;
+        if (numGraphemes == 0u)
+            return ArrayIdx(0);
 
         ArrayIdx charCount;
         if (dir == Direction.Front) {
-            charCount = buffer[idx..$].byGrapheme.take(numGraphemes).byCodePoint.count;
+            charCount = buffer[idx..$].byGrapheme.take(numGraphemes.to!ulong).byCodePoint.count;
         } else { // Direction.Back
-            charCount = buffer[0..idx].byGrapheme.tail(numGraphemes).byCodePoint.count;
+            charCount = buffer[0..idx].byGrapheme.tail(numGraphemes.to!ulong).byCodePoint.count;
         }
         return charCount;
     }
@@ -231,7 +246,7 @@ struct GapBuffer
     {
         writeln("gapstart: ", gapStart, " gapend: ", gapEnd, " len: ", buffer.length,
                 " currentGapSize: ", currentGapSize, " configuredGapSize: ", configuredGapSize,
-                " contentLength: ", contentLength);
+                " contentGrpmLen: ", contentGrpmLen);
         writeln("BeforeGap:|", contentBeforeGap,"|");
         writeln("AfterGap:|", contentAfterGap, "|");
         writeln("Text content:|", content, "|");
@@ -322,12 +337,11 @@ struct GapBuffer
     /// different / from the number of chartype elements or even unicode code
     /// points.
     public @property @safe const pragma(inline)
-    GrpmCount contentLength()
+    GrpmCount contentGrpmLen()
     {
-        // XXX use indexes
-        return countGraphemes(contentBeforeGap) + countGraphemes(contentAfterGap);
+        return GrpmCount(contentBeforeGapGrpmLen.to!ulong + contentAfterGapGrpmLen.to!ulong);
     }
-    public alias length = contentLength;
+    public alias length = contentGrpmLen;
 
     /**
      * Returns the cursor position (the gapStart)
@@ -335,25 +349,22 @@ struct GapBuffer
     public @property @safe const pragma(inline)
     GrpmIdx cursorPos()
     {
-        // fast path
-        if (forceFastMode || !hasCombiningGraphemes)
-            return gapStart;
-
-        // XXX use indexes
-        return countGraphemes(contentBeforeGap);
+        return cursorPosGrpm;
     }
 
     /**
      * Sets the cursor position. The position is relative to
      * the text and ignores the gap
      */
-    public @property @safe pragma(inline)
+    public @property @trusted pragma(inline)
     void cursorPos(GrpmIdx pos)
     {
-        if (cursorPos > pos) {
-            cursorBackward(cursorPos - pos);
+        pos = min(pos, contentGrpmLen);
+
+        if (pos < cursorPosGrpm) {
+            cursorBackward(GrpmCount(cursorPosGrpm - pos));
         } else {
-            cursorForward(pos - cursorPos);
+            cursorForward(GrpmCount(pos - cursorPosGrpm));
         }
     }
 
@@ -362,23 +373,26 @@ struct GapBuffer
      * Params:
      *     count = the number of places to move to the right.
      */
-    public @safe
+    public @trusted
     void cursorForward(GrpmCount count)
     {
-        // XXX: update indexes
-        // XXX: use indexes (contentAfterGapGrpmLen)
-
         if (count <= 0 || buffer.length == 0 || gapEnd + 1 == buffer.length)
             return;
 
-        ImGrpmCount graphemesToCopy = min(count, countGraphemes(contentAfterGap));
-        ImArrayIdx idxDiff = idxDiffUntilGrapheme(gapEnd, graphemesToCopy, Direction.Front);
+        ImGrpmCount actualToMoveGrpm = min(count, contentAfterGapGrpmLen);
+        ImArrayIdx idxDiff = idxDiffUntilGrapheme(gapEnd, actualToMoveGrpm,
+                Direction.Front);
+
         ImArrayIdx newGapStart = gapStart + idxDiff;
         ImArrayIdx newGapEnd = gapEnd + idxDiff;
-
         buffer[gapEnd..newGapEnd].copy(buffer[gapStart..newGapStart]);
+
         gapStart = newGapStart;
-        gapEnd = newGapEnd;
+        gapEnd   = newGapEnd;
+
+        contentBeforeGapGrpmLen += actualToMoveGrpm.to!ulong;
+        contentAfterGapGrpmLen  -= actualToMoveGrpm.to!ulong;
+        cursorPosGrpm           += actualToMoveGrpm.to!ulong;
     }
 
     /**
@@ -386,23 +400,26 @@ struct GapBuffer
      * Params:
      *     count = the number of places to move to the left.
      */
-    public @safe
+    public @trusted
     void cursorBackward(GrpmCount count)
     {
-        // XXX: update indexes
-        // XXX: use indexes (contentBeforeGapGrpmLen)
-
         if (count <= 0 || buffer.length == 0 || gapStart == 0)
             return;
 
-        ImGrpmCount graphemesToCopy = min(count, countGraphemes(contentBeforeGap));
-        ImArrayIdx idxDiff = idxDiffUntilGrapheme(gapStart, graphemesToCopy, Direction.Back);
+        ImGrpmCount actualToMoveGrpm = min(count, contentBeforeGapGrpmLen);
+        ImArrayIdx idxDiff = idxDiffUntilGrapheme(gapStart, actualToMoveGrpm,
+                Direction.Back);
+
         ImArrayIdx newGapStart = gapStart - idxDiff;
         ImArrayIdx newGapEnd = gapEnd - idxDiff;
-
         buffer[newGapStart..gapStart].copy(buffer[newGapEnd..gapEnd]);
+
         gapStart = newGapStart;
-        gapEnd = newGapEnd;
+        gapEnd  = newGapEnd;
+
+        contentBeforeGapGrpmLen -= actualToMoveGrpm.to!ulong;
+        contentAfterGapGrpmLen  += actualToMoveGrpm.to!ulong;
+        cursorPosGrpm           -= actualToMoveGrpm.to!ulong;
     }
 
     // Note: this wont call checkCombinedGraphemes because it would have to check
@@ -418,18 +435,20 @@ struct GapBuffer
      * Params:
      *     count = the numbers of chars to delete.
      */
-    public @safe
+    public @trusted
     void deleteLeft(GrpmCount count)
     {
-        // XXX: update indexes
-        // XXX: use indexes (contentBeforeGapGrpmLen)
-
         if (buffer.length == 0 || gapStart == 0)
             return;
 
-        ImGrpmCount graphemesToDel = min(count, countGraphemes(contentBeforeGap));
-        ImArrayIdx idxDiff = idxDiffUntilGrapheme(gapStart, graphemesToDel, Direction.Back);
+        ImGrpmCount actualToDelGrpm = min(count, contentBeforeGapGrpmLen);
+        ImArrayIdx idxDiff = idxDiffUntilGrapheme(gapStart, actualToDelGrpm,
+                Direction.Back);
+
         gapStart = max(gapStart - idxDiff, 0);
+
+        contentBeforeGapGrpmLen -= actualToDelGrpm.to!ulong;
+        cursorPosGrpm           -= actualToDelGrpm.to!ulong;
     }
 
     // Note: ditto.
@@ -441,18 +460,18 @@ struct GapBuffer
       * Params:
       *     count = the number of chars to delete.
       */
-    public @safe
+    public @trusted
     void deleteRight(GrpmCount count)
     {
-        // XXX: update indexes
-        // XXX: use indexes (contentAfterGapGrpmLen)
-
         if (buffer.length == 0 || gapEnd == buffer.length)
             return;
 
-        ImGrpmCount graphemesToDel = min(count, countGraphemes(contentAfterGap));
-        ImArrayIdx idxDiff = idxDiffUntilGrapheme(gapEnd, graphemesToDel, Direction.Front);
+        ImGrpmCount actualToDelGrpm = min(count, contentAfterGapGrpmLen);
+        ImArrayIdx idxDiff = idxDiffUntilGrapheme(gapEnd, actualToDelGrpm,
+                Direction.Front);
         gapEnd = min(gapEnd + idxDiff, buffer.length);
+
+        contentAfterGapGrpmLen -= actualToDelGrpm.to!ulong;
     }
 
     /**
@@ -461,11 +480,9 @@ struct GapBuffer
      * Params:
      *     text = text to add.
      */
-    public @safe
+    public @trusted
     void addText(const dchar[] text)
     {
-        // XXX: update indexes
-
         if (text.length >= currentGapSize) {
             // doesnt fill in the gap, reallocate the buffer adding the text
             reallocate(text);
@@ -475,6 +492,17 @@ struct GapBuffer
             text.copy(buffer[gapStart..newGapStart]);
             gapStart = newGapStart;
         }
+
+        // fast path
+        GrpmIdx graphemesAdded;
+        if (forceFastMode || !hasCombiningGraphemes) {
+            graphemesAdded = text.length;
+        } else {
+            graphemesAdded = countGraphemes(text);
+        }
+
+        contentBeforeGapGrpmLen += graphemesAdded.to!ulong;
+        cursorPosGrpm           += graphemesAdded.to!ulong;
     }
 
     public @safe pragma(inline)
@@ -482,6 +510,22 @@ struct GapBuffer
         if (isSomeString!StrT)
     {
         addText(asArray(text));
+    }
+
+    package @trusted pragma(inline)
+    void updateGrpmLens()
+    {
+        // FIXME: unittest
+        // fast path
+        if (forceFastMode || !hasCombiningGraphemes) {
+            contentBeforeGapGrpmLen = contentBeforeGap.length;
+            contentAfterGapGrpmLen  = contentAfterGap.length;
+        } else {
+            contentBeforeGapGrpmLen = countGraphemes(contentBeforeGap);
+            contentAfterGapGrpmLen  = countGraphemes(contentAfterGap);
+        }
+        // XXX check this too
+        cursorPosGrpm = contentBeforeGapGrpmLen + 1;
     }
 
     /**
@@ -494,7 +538,6 @@ struct GapBuffer
     public @safe
     void clear(const dchar[] text=null, bool moveToEndEnd=true)
     {
-        // XXX: update indexes
         if (moveToEndEnd) {
             buffer = text ~ createNewGap();
             gapStart = text.length;
@@ -504,7 +547,10 @@ struct GapBuffer
             gapStart = 0;
             gapEnd = _configuredGapSize;
         }
+
         checkCombinedGraphemes();
+        updateGrpmLens();
+
     }
 
     public @safe pragma(inline)
@@ -526,8 +572,6 @@ struct GapBuffer
     package @trusted
     void reallocate(const dchar[] textToAdd=null)
     {
-        // XXX: update indexes
-
         ImArraySize oldContentAfterGapSize = contentAfterGap.length;
 
         // Check if the actual size of the gap is smaller than configuredSize
@@ -547,6 +591,7 @@ struct GapBuffer
         reallocCount += 1;
 
         checkCombinedGraphemes();
+        updateGrpmLens();
     }
 
     package @safe pragma(inline)
@@ -565,7 +610,7 @@ struct GapBuffer
     /**
      * $ (length) operator
      */
-    public alias opDollar = contentLength;
+    public alias opDollar = contentGrpmLen;
 
     /// OpIndex: dchar[] b = gapbuffer[3];
     /// Please note that this returns a dchar[] and NOT a single
@@ -575,24 +620,36 @@ struct GapBuffer
     {
         // fast path
         if (forceFastMode || !hasCombiningGraphemes)
-            return [content[pos]];
+            return [content[pos.to!ulong]];
 
-        return content.byGrapheme.drop(pos).take(1).byCodePoint.array.to!(dchar[]);
+        return content.byGrapheme.drop(pos.to!ulong).take(1).byCodePoint.array.to!(dchar[]);
+    }
+    public @safe pragma(inline)
+    const(dchar[]) opIndex(ulong pos) const
+    {
+        return opIndex(GrpmIdx(pos));
     }
 
     /**
      * index operator read: auto x = gapBuffer[0..3]
      */
-    public @safe pragma(inline)
+    public @trusted pragma(inline)
     const(dchar[]) opSlice(GrpmIdx start, GrpmIdx end) const
     {
         // fast path
         if (forceFastMode || !hasCombiningGraphemes) {
-            return content[start..end];
+            return content[start.to!ulong..end.to!ulong];
         }
 
         // slow path
-        return content.byGrapheme.drop(start).take(end-start).byCodePoint.array.to!(dchar[]);
+        return content.byGrapheme.drop(start.to!ulong)
+                      .take(end.to!ulong - start.to!ulong)
+                      .byCodePoint.array.to!(dchar[]);
+    }
+    public @safe pragma(inline)
+    const(dchar[]) opSlice(ulong start, ulong end) const
+    {
+        return opSlice(GrpmIdx(start), GrpmIdx(end));
     }
 
     /**

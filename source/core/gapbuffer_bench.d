@@ -7,13 +7,14 @@ import std.datetime;
 import std.stdio;
 import std.typecons;
 
-
-//private void bench_overlaps1(uint iterations)
-//{
-    //auto overlaps1_call = () => overlaps(0, 4, 2, 3);
-    //auto duration = benchmark!overlaps1_call(iterations);
-    //writeln("overlaps simple: ", to!Duration(duration[0]));
-//}
+version(none){
+private void bench_overlaps1(uint iterations)
+{
+    auto overlaps1_call = () => overlaps(0, 4, 2, 3);
+    auto duration = benchmark!overlaps1_call(iterations);
+    writeln("overlaps simple: ", to!Duration(duration[0]));
+}
+}
 
 version(none) {
 private void bench_fill(uint iterations)
@@ -190,29 +191,28 @@ private void benchProgrammingSessionCP()
             g = gapbuffer("", gapsize);
             g.forceFastMode = forceFastMode;
             g.clear(code);
-            g.cursorPos = g.contentLength / 2;
+            g.cursorPos = (g.contentGrpmLen.to!ulong / 2).to!GrpmIdx;
         } else {
             g = preLoadedGapBuffer;
         }
-
         foreach (i; 0..100) {
             g.addText("private void benchProgrammingSessionCP(bool benchBufferLoad = true) {\n");
-            g.cursorBackward(10);
+            g.cursorBackward(GrpmCount(10));
             g.addText("XX");
-            g.cursorForward(12);
+            g.cursorForward(GrpmCount(12));
             g.addText("enum code = import(\"fixtures/testbench_code_multicp.txt\");\nY");
-            g.deleteLeft(1);
+            g.deleteLeft(1.to!GrpmCount);
             g.addText("X");
             g.addText("immutable fillreplicate = () => a = replicate(filler, 100);\n");
-            g.cursorBackward(10);
-            g.deleteRight(8);
+            g.cursorBackward(GrpmCount(10));
+            g.deleteRight(GrpmCount(8));
             g.addText("1234567890 ");
-            g.cursorForward(2);
-            g.deleteRight(160);
+            g.cursorForward(GrpmCount(2));
+            g.deleteRight(GrpmCount(160));
             g.addText("// With a lot of overlap, this is much faster. I also benefits a lot from release mode.\n");
             g.addText("// is much faster specially when it doesnt need to extend much the currentGap blablabla.\n");
             g.addText("// End of the loop!\n");
-            g.cursorBackward(200);
+            g.cursorBackward(GrpmCount(200));
         }
     }
 
@@ -227,25 +227,32 @@ private void benchProgrammingSessionCP()
     // best benchmark done with dub run --compiler=ldc2 --build=release-nobounds
     // dmd / dmd-release / ldc / ldc-release (10 iterations)
 
-    // before indexes:
-    // 3 mins 1 sec || release: 51 secs || ldc: 2 mins 36 secs || ldc-release: 18.21 secs
+    // ==================================================================================
+    // "Slow indexing" (compatible with Unicode multi CP graphemes) =====================
+    // ==================================================================================
+    // Optimization log:
+    // - 11/05/2017: Adding the unicode indexes improved performance on "slow" mode a lot
+    //   without slowing performance on "fast" mode.
+
+    // 1 min 36 sec || release: 24 secs || ldc: 1 min 22 secs  || ldc-release: 8.84 secs
     duration = benchmark!editSessionSlow(iterations);
     writeln("Edit session, slow operations: ", to!Duration(duration[0]));
 
-    // before indexes:
-    // 1 min 54 secs || release: 33 secs || ldc: 1min 38 secs || ldc-release: 11.66 secs
+    // 29.39 secs    || release: 7.4 secs || ldc: 25.89 secs   || ldc-release: 2.68 secs
     preLoadedGapBuffer = gapbuffer(code, gapsize);
     preLoadedGapBuffer.forceFastMode = false;
     duration = benchmark!editSessionNoLoad(iterations);
     writeln("Edit session, slow operations, not including initial load: ", to!Duration(duration[0]));
 
-    // before indexes:
-    // 19 msecs || release: 6 msecs || ldc: 16 msecs || ldc-release: 2.2 msecs
+    // =================================================================================
+    // "Fast indexing" (incompatible with Unicode multi CP graphemes) ==================
+    // =================================================================================
+
+    // 19 msecs || release: 6 msecs || ldc: 25 msecs || ldc-release: 2.17 msecs
     duration = benchmark!editSessionFast(1);
     writeln("Edit session, fast operations: ", to!Duration(duration[0]));
 
-    // before indexes:
-    // 605 μs || release: 395 μs || ldc: 395 μs || ldc-release: 179 μs
+    // 580 μs || release: 235 μs || ldc: 521 μs || ldc-release: 146 μs
     preLoadedGapBuffer = gapbuffer(code, gapsize);
     preLoadedGapBuffer.forceFastMode = true;
     duration = benchmark!editSessionNoLoad(iterations);
