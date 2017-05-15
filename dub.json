@@ -16,6 +16,5 @@
 	"subPackages": [],
 	"excludedSourceFiles": ["source/core/discarded.d", "source/core/exploratory/*"],
 	"dependencies": {
-	    "emsi_containers": "0.5.3"
 	}
 }

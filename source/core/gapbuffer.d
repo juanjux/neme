@@ -627,7 +627,6 @@ struct GapBuffer
     package @trusted
     void reallocate(const BufferType textToAdd)
     {
-        GC.reserve(buffer.length + textToAdd.length + _configuredGapSize + (1024*24));
         ImArraySize oldContentAfterGapSize = contentAfterGap.length;
 
         // Check if the actual size of the gap is smaller than configuredSize
@@ -648,32 +647,11 @@ struct GapBuffer
 
         checkCombinedGraphemes();
         updateGrpmLens();
-        GC.minimize();
     }
-    package @trusted
+    package @trusted pragma(inline)
     void reallocate()
     {
-        GC.reserve(buffer.length + _configuredGapSize + (1024*24));
-        ImArraySize oldContentAfterGapSize = contentAfterGap.length;
-
-        // Check if the actual size of the gap is smaller than configuredSize
-        // to extend the gap (and how much)
-        BufferType gapExtension;
-        if (currentGapSize >= _configuredGapSize) {
-            // no need to extend the gap
-            gapExtension.length = 0;
-        } else {
-            gapExtension = createNewGap(configuredGapSize - currentGapSize);
-            gapExtensionCount += 1;
-        }
-
-        buffer.insertInPlace(gapStart, gapExtension);
-        gapEnd = buffer.length - oldContentAfterGapSize;
-        reallocCount += 1;
-
-        checkCombinedGraphemes();
-        updateGrpmLens();
-        GC.minimize();
+        reallocate(null);
     }
 
     package @safe pragma(inline)

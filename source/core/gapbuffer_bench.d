@@ -263,10 +263,55 @@ private void benchProgrammingSessionCP()
     writeln("Edit session, fast operations, not including initial load: ", to!Duration(duration[0]));
 }
 
+// Test small, medium and big reallocations performance
+void benchReallocations()
+{
+    import std.array: replicate;
+    import core.memory: GC;
+
+    enum iterations = 100;
+
+    dstring smalltext = "some text";
+    enum dstring mediumtext = replicate(['-'.to!dchar], 1024*10);
+    enum dstring bigtext = replicate(['-'.to!dchar], 1024*1024);
+
+    pragma(inline)
+    void reallocations(dstring newtext) {
+        auto gb = gapbuffer("some initial text", 2);
+
+        foreach(i ;0..iterations) {
+            gb.addText(newtext);
+            gb.clear(newtext);
+        }
+    }
+
+    auto smallReallocs  = () => reallocations(smalltext);
+    auto mediumReallocs = () => reallocations(mediumtext);
+    auto bigReallocs    = () => reallocations(bigtext);
+
+    TickDuration[1] duration = void;
+
+    // 168 usecs
+    duration = benchmark!smallReallocs(1);
+    writeln(iterations, " small reallocations: ", to!Duration(duration[0]));
+    GC.minimize();
+
+    // 125 msecs
+    duration = benchmark!mediumReallocs(1);
+    writeln(iterations, " medium reallocations: ", to!Duration(duration[0]));
+    GC.minimize();
+
+    // 13.62 msecs
+    duration = benchmark!bigReallocs(1);
+    writeln(iterations, " big reallocations: ", to!Duration(duration[0]));
+    GC.minimize();
+}
+
 void bench()
 {
     auto g = gapbuffer();
-    benchProgrammingSessionCP();
+    //benchProgrammingSessionCP();
+    benchReallocations();
 
     //uint iterations = 10_000_000;
     //bench_overlaps1(iterations);
