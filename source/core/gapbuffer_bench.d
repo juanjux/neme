@@ -1,11 +1,12 @@
 module neme.core.gapbuffer_bench;
 
 import core.memory: GC;
-import neme.core.gapbuffer;
 import std.conv: to;
 import std.datetime;
 import std.stdio;
 import std.typecons;
+
+import neme.core.gapbuffer;
 
 version(none){
 private void bench_overlaps1(uint iterations)
@@ -177,18 +178,18 @@ private void bench_appendarray(uint iterations)
 // Replacements
 // Operations on text objects
 // ...etc
-private void benchProgrammingSessionCP()
+private void benchProgrammingSessionCP(GBType)()
 {
     // test 1: combining chars (slow path enabled)
     enum code = import("fixtures/testbench_code_multicp.txt");
     enum gapsize = 1024*32; // seems to be the sweet spot for this test (we're not testing allocation)
-    GapBuffer preLoadedGapBuffer = void;
+    GBType preLoadedGapBuffer = void;
 
     void editSession(string code, Flag!"forceFastMode" forceFastMode, Flag!"doLoad" doLoad=Yes.doLoad) {
         // 32kb of buffer seems to be a sweet spot for this test
-        GapBuffer g = void;
+        GBType g = void;
         if (doLoad) {
-            g = gapbuffer("", gapsize);
+            g = GBType("", gapsize);
             g.forceFastMode = forceFastMode;
             g.clear(code);
             g.cursorPos = (g.contentGrpmLen.to!ulong / 2).to!GrpmIdx;
@@ -233,18 +234,14 @@ private void benchProgrammingSessionCP()
      ║ ⚑ "Slow indexing" (compatible with Unicode multi CP graphemes)
      ╚══════════════════════════════════════════════════════════════════════════════
     +/
-    // Optimization log:
-    // - 11/05/2017: Adding the unicode indexes improved performance on "slow" mode a lot
-    //   without slowing performance on "fast" mode.
-
     // 1 min 36 sec || release: 24 secs || ldc: 1 min 22 secs  || ldc-release: 8.84 secs
     duration = benchmark!editSessionSlow(iterations);
     writeln("Edit session, slow operations: ", to!Duration(duration[0]));
 
     // 29.39 secs    || release: 7.4 secs || ldc: 25.89 secs   || ldc-release: 2.68 secs
-    preLoadedGapBuffer = gapbuffer(code, gapsize);
+    preLoadedGapBuffer = GBType(code, gapsize);
     preLoadedGapBuffer.forceFastMode = false;
-    duration = benchmark!editSessionNoLoad(iterations);
+    duration = benchmark!(() => editSession(code, Yes.forceFastMode, No.doLoad)) (iterations);
     writeln("Edit session, slow operations, not including initial load: ", to!Duration(duration[0]));
 
     /+
@@ -252,14 +249,14 @@ private void benchProgrammingSessionCP()
      ║ ⚑ "Fast indexing" (incompatible with Unicode multi CP graphemes)
      ╚══════════════════════════════════════════════════════════════════════════════
     +/
-    // 19 msecs || release: 6 msecs || ldc: 25 msecs || ldc-release: 2.17 msecs
-    duration = benchmark!editSessionFast(1);
+    // 19 msecs || release: 6 msecs || ldc: 25 msecs || ldc-release: 29 msecs
+    duration = benchmark!(() => editSession(code, Yes.forceFastMode)) (iterations);
     writeln("Edit session, fast operations: ", to!Duration(duration[0]));
 
     // 580 μs || release: 235 μs || ldc: 521 μs || ldc-release: 146 μs
-    preLoadedGapBuffer = gapbuffer(code, gapsize);
+    preLoadedGapBuffer = GBType(code, gapsize);
     preLoadedGapBuffer.forceFastMode = true;
-    duration = benchmark!editSessionNoLoad(iterations);
+    duration = benchmark!(() => editSession(code, Yes.forceFastMode, No.doLoad)) (iterations);
     writeln("Edit session, fast operations, not including initial load: ", to!Duration(duration[0]));
 }
 
@@ -310,8 +307,10 @@ void benchReallocations()
 void bench()
 {
     auto g = gapbuffer();
-    //benchProgrammingSessionCP();
-    benchReallocations();
+    writeln("Programming sessions: ");
+    benchProgrammingSessionCP!GapBuffer;
+
+    //benchReallocations();
 
     //uint iterations = 10_000_000;
     //bench_overlaps1(iterations);
