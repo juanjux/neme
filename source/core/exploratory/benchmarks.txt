@@ -1,4 +1,4 @@
-== LDC2, release-nobounds:
+== NORMAL: LDC2, release-nobounds:
 
 Programming sessions:
 Edit session, slow operations: 8 secs, 869 ms, 542 μs, and 2 hnsecs
@@ -26,3 +26,14 @@ Edit session, fast operations, not including initial load: 13 ms, 684 μs, and 1
 100 small reallocations: 184 μs and 7 hnsecs
 100 medium reallocations: 102 ms, 257 μs, and 9 hnsecs
 100 big reallocations: 10 secs, 826 ms, 558 μs, and 2 hnsecs
+
+== NORMAL after checkCombinedGraphemes optimized
+
+Programming sessions:
+Edit session, slow operations: 7 secs, 606 ms, 304 μs, and 8 hnsecs
+Edit session, slow operations, not including initial load: 2 secs, 370 ms, 786 μs, and 6 hnsecs
+Edit session, fast operations: 26 ms, 414 μs, and 3 hnsecs
+Edit session, fast operations, not including initial load: 22 ms, 721 μs, and 2 hnsecs
+100 small reallocations: 285 μs and 1 hnsec
+100 medium reallocations: 118 ms, 303 μs, and 9 hnsecs
+100 big reallocations: 11 secs, 901 ms, 867 μs, and 8 hnsecs
