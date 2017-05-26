@@ -504,19 +504,32 @@ debug
 /// clear without text
 @safe unittest
 {
-    string text = "some added text";
+    string text = "1234567890";
     string combtext = "r̈a⃑⊥ b⃑67890";
 
     foreach(txt; [text, combtext])
     {
         auto gb = gapbuffer(txt, 10);
+        auto oldBufLen = gb.buffer.length;
         gb.clear();
 
-        assert(gb.buffer.length == gb.configuredGapSize);
+        // Should have not reallocated since the buffer is bigger than
+        // text ("") + configuredGapSize
+        assert(gb.buffer.length == oldBufLen);
         assert(gb.content.to!string == "");
         assert(gb.content.length == 0);
         assert(gb.gapStart == 0);
-        assert(gb.gapEnd == gb.configuredGapSize);
+        assert(gb.gapEnd == gb.buffer.length);
+
+        // should-reallocate test
+        gb = gapbuffer(txt, 10);
+        oldBufLen = gb.buffer.length;
+        string newText = txt ~ txt ~ txt ~ txt;
+        gb.clear(newText);
+
+        assert(gb.buffer.length == (txt.to!dstring.length * 4) + gb.configuredGapSize);
+        assert(gb.content.to!string == txt ~ txt ~ txt ~ txt);
+
     }
 }
 

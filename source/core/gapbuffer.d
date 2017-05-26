@@ -39,11 +39,9 @@ import core.memory: GC;
 
 // TODO: line number cache in the data structure
 
-// TODO: add a "fastclear()": if buffer.length > newText, without reallocation. This will
+// TODO: add a "fastclear()": if buffer.length > newText+configuredGapSize, without reallocation. This will
 // overwrite the start with the new text and then extend the gap from the end of
 // the new text to the end of the buffer
-
-// TODO: content() (probably) reallocates every time, think of a way to avoid that
 
 // TODO: Unify doc comment style
 
@@ -268,7 +266,7 @@ struct GapBuffer
     {
         writeln("gapstart: ", gapStart, " gapend: ", gapEnd, " len: ", buffer.length,
                 " currentGapSize: ", currentGapSize, " configuredGapSize: ", _configuredGapSize,
-                " contentGrpmLen: ", contentGrpmLen);
+                " contentGrpmLen: ", contentGrpmLen, " contentCPLen: ", content.byCodePoint.count);
         writeln("BeforeGap:|", contentBeforeGap,"|");
         writeln("AfterGap:|", contentAfterGap, "|");
         writeln("Text content:|", content, "|");
@@ -353,7 +351,11 @@ struct GapBuffer
     {
         enforce(newSize > 1, "Minimum gap size must be greater than 1");
         _configuredGapSize = newSize;
-        reallocate();
+
+        // If the newSize if bigger than the current gap, reallocate
+        if (newSize > (gapEnd - gapStart)) {
+            reallocate();
+        }
     }
     /// Return the number of visual chars (graphemes). This number can be
     /// different / from the number of chartype elements or even unicode code
@@ -597,14 +599,29 @@ struct GapBuffer
     out(res) { assert(res > 0); }
     body
     {
+        bool noRealloc = buffer.length >= text.length + _configuredGapSize;
+
         if (moveToEndEnd) {
-            buffer = text ~ createNewGap();
-            gapStart = text.length;
+            if (noRealloc) {
+                buffer[0..text.length] = text;
+                gapStart = text.length;
+                gapEnd = buffer.length;
+            } else {
+                buffer = text ~ createNewGap();
+                gapStart = text.length;
+                gapEnd = gapStart + _configuredGapSize;
+            }
             gapEnd = buffer.length;
         } else {
-            buffer = createNewGap() ~ text;
-            gapStart = 0;
-            gapEnd = _configuredGapSize;
+            if (noRealloc) {
+                gapStart = 0;
+                gapEnd = buffer.length - text.length;
+                buffer[gapEnd..$] = text;
+            } else {
+                buffer = createNewGap() ~ text;
+                gapStart = 0;
+                gapEnd = _configuredGapSize;
+            }
         }
 
         checkCombinedGraphemes();

@@ -233,7 +233,7 @@ private void benchProgrammingSessionCP(GBType)()
      ║ ⚑ "Slow indexing" (compatible with Unicode multi CP graphemes)
      ╚══════════════════════════════════════════════════════════════════════════════
     +/
-    // 7.60 secs
+    // 7.54 secs
     duration = benchmark!editSessionSlow(iterations);
     writeln("Edit session, slow operations: ", to!Duration(duration[0]));
 
@@ -248,11 +248,11 @@ private void benchProgrammingSessionCP(GBType)()
      ║ ⚑ "Fast indexing" (incompatible with Unicode multi CP graphemes)
      ╚══════════════════════════════════════════════════════════════════════════════
     +/
-    // 26 msecs
+    // 3 msecs
     duration = benchmark!(() => editSession(code, Yes.forceFastMode)) (iterations);
     writeln("Edit session, fast operations: ", to!Duration(duration[0]));
 
-    // 146 μs => 15 msecs (WTF)
+    // 139 μs
     preLoadedGapBuffer = GBType(code, gapsize);
     preLoadedGapBuffer.forceFastMode = true;
     duration = benchmark!(() => editSession(code, Yes.forceFastMode, No.doLoad)) (iterations);
@@ -287,17 +287,17 @@ void benchReallocations()
 
     TickDuration[1] duration = void;
 
-    // 168 usecs
+    // 121 usecs
     duration = benchmark!smallReallocs(1);
     writeln(iterations, " small reallocations: ", to!Duration(duration[0]));
     GC.minimize();
 
-    // 125 msecs
+    // 85 msecs
     duration = benchmark!mediumReallocs(1);
     writeln(iterations, " medium reallocations: ", to!Duration(duration[0]));
     GC.minimize();
 
-    // 13.62 msecs
+    // 8.97 msecs
     duration = benchmark!bigReallocs(1);
     writeln(iterations, " big reallocations: ", to!Duration(duration[0]));
     GC.minimize();
@@ -308,8 +308,7 @@ void bench()
     auto g = gapbuffer();
     writeln("Programming sessions: ");
     benchProgrammingSessionCP!GapBuffer;
-
-    //benchReallocations();
+    benchReallocations();
 
     //uint iterations = 10_000_000;
     //bench_overlaps1(iterations);
