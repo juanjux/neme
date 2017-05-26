@@ -1,0 +1,28 @@
+== LDC2, release-nobounds:
+
+Programming sessions:
+Edit session, slow operations: 8 secs, 869 ms, 542 μs, and 2 hnsecs
+Edit session, slow operations, not including initial load: 2 secs, 647 ms, 721 μs, and 7 hnsecs
+Edit session, fast operations: 32 ms, 13 μs, and 7 hnsecs
+Edit session, fast operations, not including initial load: 13 ms, 983 μs, and 2 hnsecs
+100 small reallocations: 207 μs and 7 hnsecs
+100 medium reallocations: 113 ms, 816 μs, and 6 hnsecs
+100 big reallocations: 11 secs, 924 ms, 549 μs, and 2 hnsecs
+
+== LDC2, release-nobounds, O3, profile guided optimizations (+10%)
+
+Steps:
+
+1. dub build --build=release-nobounds --force --compiler=ldc2 --config=pgo_generate
+2. ./neme
+3. ldc-profdata merge -output=profile.data profile.raw
+4. dub build --build=release-nobounds --force --compiler=ldc2 --config=pgo_build
+
+Programming sessions:
+Edit session, slow operations: 9 secs, 51 ms, 874 μs, and 2 hnsecs
+Edit session, slow operations, not including initial load: 2 secs, 783 ms, 167 μs, and 8 hnsecs
+Edit session, fast operations: 30 ms, 824 μs, and 7 hnsecs
+Edit session, fast operations, not including initial load: 13 ms, 684 μs, and 1 hnsec
+100 small reallocations: 184 μs and 7 hnsecs
+100 medium reallocations: 102 ms, 257 μs, and 9 hnsecs
+100 big reallocations: 10 secs, 826 ms, 558 μs, and 2 hnsecs

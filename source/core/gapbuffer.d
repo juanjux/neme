@@ -199,12 +199,20 @@ struct GapBuffer
     package @safe pragma(inline)
     void checkCombinedGraphemes(const(BufferType) text, Flag!"forceCheck" forceCheck = No.forceCheck)
     {
-        // TODO: short circuit the exit as soon as one difference is found
-        // only a small text: only do the check if we didn't
+        // Only a small text: only do the check if we didn't
         // had combined chars before (to avoid setting it to "false"
         // when it already had combined chars but the new text doesn't)
-        if(forceCheck || !hasCombiningGraphemes) {
-            hasCombiningGraphemes = text.byCodePoint.count != text.byGrapheme.count;
+        if (forceCheck || !hasCombiningGraphemes) {
+            long idx = 0;
+            foreach(gpm; text.byGrapheme) {
+                // Short circuit the loop as soon as a multi CP grapheme is found
+                if (gpm.length > 1) {
+                    hasCombiningGraphemes = true;
+                    return;
+                }
+            }
+
+            hasCombiningGraphemes = false;
         }
     }
     package @safe pragma(inline)

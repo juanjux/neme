@@ -226,7 +226,6 @@ private void benchProgrammingSessionCP(GBType)()
     TickDuration[1] duration = void;
 
     // best benchmark done with dub run --compiler=ldc2 --build=release-nobounds
-    // dmd / dmd-release / ldc / ldc-release (10 iterations)
 
 
     /+
@@ -234,11 +233,11 @@ private void benchProgrammingSessionCP(GBType)()
      ║ ⚑ "Slow indexing" (compatible with Unicode multi CP graphemes)
      ╚══════════════════════════════════════════════════════════════════════════════
     +/
-    // 1 min 36 sec || release: 24 secs || ldc: 1 min 22 secs  || ldc-release: 8.84 secs
+    // 7.60 secs
     duration = benchmark!editSessionSlow(iterations);
     writeln("Edit session, slow operations: ", to!Duration(duration[0]));
 
-    // 29.39 secs    || release: 7.4 secs || ldc: 25.89 secs   || ldc-release: 2.68 secs
+    // 2.37 secs
     preLoadedGapBuffer = GBType(code, gapsize);
     preLoadedGapBuffer.forceFastMode = false;
     duration = benchmark!(() => editSession(code, Yes.forceFastMode, No.doLoad)) (iterations);
@@ -249,11 +248,11 @@ private void benchProgrammingSessionCP(GBType)()
      ║ ⚑ "Fast indexing" (incompatible with Unicode multi CP graphemes)
      ╚══════════════════════════════════════════════════════════════════════════════
     +/
-    // 19 msecs || release: 6 msecs || ldc: 25 msecs || ldc-release: 29 msecs
+    // 26 msecs
     duration = benchmark!(() => editSession(code, Yes.forceFastMode)) (iterations);
     writeln("Edit session, fast operations: ", to!Duration(duration[0]));
 
-    // 580 μs || release: 235 μs || ldc: 521 μs || ldc-release: 146 μs
+    // 146 μs => 15 msecs (WTF)
     preLoadedGapBuffer = GBType(code, gapsize);
     preLoadedGapBuffer.forceFastMode = true;
     duration = benchmark!(() => editSession(code, Yes.forceFastMode, No.doLoad)) (iterations);
