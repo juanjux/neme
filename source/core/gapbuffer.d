@@ -139,7 +139,7 @@ struct GapBuffer
     // If we have combining unicode chars (several code points for a single
     // grapheme) some methods switch to a slower unicode-striding implementation.
     // The detection and update of this boolean is done checkCombinedGraphemes().
-    package bool _hasCombiningGraphemes = false;
+    package bool hasCombiningGraphemes = false;
     /// This will use the fast array-based version of all text operations even if the buffer
     /// contains multi code point graphemes. Enabling this will make multi cp graphemes
     /// to don't display correctly.
@@ -158,19 +158,6 @@ struct GapBuffer
         if (!force)
             // Dont remove Yes.forceCheck, could cause a recursive loop
             checkCombinedGraphemes(content, Yes.forceCheck);
-    }
-
-    public @property @safe const pragma(inline)
-    bool hasCombiningGraphemes()
-    {
-        if (forceFastMode)
-            return false;
-        return _hasCombiningGraphemes;
-    }
-    private @property @safe pragma(inline)
-    void hasCombiningGraphemes(bool setComb)
-    {
-        _hasCombiningGraphemes = setComb;
     }
 
     /// Normal constructor for a BufferType
@@ -202,7 +189,7 @@ struct GapBuffer
         // Only a small text: only do the check if we didn't
         // had combined chars before (to avoid setting it to "false"
         // when it already had combined chars but the new text doesn't)
-        if (forceCheck || !hasCombiningGraphemes) {
+        if (!forceFastMode && (forceCheck || !hasCombiningGraphemes)) {
             long idx = 0;
             foreach(gpm; text.byGrapheme) {
                 // Short circuit the loop as soon as a multi CP grapheme is found
@@ -227,7 +214,7 @@ struct GapBuffer
     inout(GrpmCount) countGraphemes(const BufferType  slice)
     {
         // fast path
-        if (forceFastMode || !hasCombiningGraphemes)
+        if (_forceFastMode || !hasCombiningGraphemes)
             return slice.length.GrpmCount;
 
         return slice.byGrapheme.count.GrpmCount;
@@ -240,7 +227,7 @@ struct GapBuffer
     ArrayIdx idxDiffUntilGrapheme(ArrayIdx idx, GrpmCount numGraphemes, Direction dir)
     {
         // fast path
-        if (forceFastMode || !hasCombiningGraphemes)
+        if (_forceFastMode || !hasCombiningGraphemes)
             return numGraphemes.to!ArrayIdx;
 
         if (numGraphemes == 0u)
@@ -260,7 +247,7 @@ struct GapBuffer
     BufferType createNewGap(ArraySize gapSize=0)
     {
         // if a new gapsize was specified use that, else use the configured default
-        ImArraySize newGapSize = gapSize? gapSize: configuredGapSize;
+        ImArraySize newGapSize = gapSize? gapSize: _configuredGapSize;
         debug
         {
             import std.array: replicate;
@@ -280,7 +267,7 @@ struct GapBuffer
     void debugContent()
     {
         writeln("gapstart: ", gapStart, " gapend: ", gapEnd, " len: ", buffer.length,
-                " currentGapSize: ", currentGapSize, " configuredGapSize: ", configuredGapSize,
+                " currentGapSize: ", currentGapSize, " configuredGapSize: ", _configuredGapSize,
                 " contentGrpmLen: ", contentGrpmLen);
         writeln("BeforeGap:|", contentBeforeGap,"|");
         writeln("AfterGap:|", contentAfterGap, "|");
@@ -565,7 +552,7 @@ struct GapBuffer
 
         // fast path
         GrpmIdx graphemesAdded;
-        if (forceFastMode || !hasCombiningGraphemes) {
+        if (_forceFastMode || !hasCombiningGraphemes) {
             graphemesAdded = text.length;
         } else {
             graphemesAdded = countGraphemes(text);
@@ -587,7 +574,7 @@ struct GapBuffer
     package @trusted pragma(inline)
     void updateGrpmLens()
     {
-        if (forceFastMode || !hasCombiningGraphemes) {
+        if (_forceFastMode || !hasCombiningGraphemes) {
             // fast path
             contentBeforeGapGrpmLen = contentBeforeGap.length;
             contentAfterGapGrpmLen  = contentAfterGap.length;
@@ -658,7 +645,7 @@ struct GapBuffer
             // no need to extend the gap
             gapExtension.length = 0;
         } else {
-            gapExtension = createNewGap(configuredGapSize - currentGapSize);
+            gapExtension = createNewGap(_configuredGapSize - currentGapSize);
             gapExtensionCount += 1;
         }
 
@@ -700,7 +687,7 @@ struct GapBuffer
     const(BufferType) opIndex(GrpmIdx pos)
     {
         // fast path
-        if (forceFastMode || !hasCombiningGraphemes)
+        if (_forceFastMode || !hasCombiningGraphemes)
             return [content[pos.to!long]];
 
         return content.byGrapheme.drop(pos.to!long).take(1).byCodePoint.array.to!(BufferType);
@@ -718,7 +705,7 @@ struct GapBuffer
     const(BufferType) opSlice(GrpmIdx start, GrpmIdx end)
     {
         // fast path
-        if (forceFastMode || !hasCombiningGraphemes) {
+        if (_forceFastMode || !hasCombiningGraphemes) {
             return content[start.to!long..end.to!long];
         }
 
