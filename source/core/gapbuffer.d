@@ -34,14 +34,11 @@ import core.memory: GC;
  (currently no check is done when deleting characters for performance reasons).
 */
 
+// TODO: move to 0-based cursor positions
 // TODO: add a demo mode (you type but the buffer representation is shown in
 //       real time as you type or move the cursor)
 
 // TODO: line number cache in the data structure
-
-// TODO: add a "fastclear()": if buffer.length > newText+configuredGapSize, without reallocation. This will
-// overwrite the start with the new text and then extend the gap from the end of
-// the new text to the end of the buffer
 
 // TODO: Unify doc comment style
 
@@ -69,7 +66,6 @@ alias ImArraySize = immutable long;
 // For grapheme positions / sizes. These are Typedefs to avoid bugs
 // related to mixing ArrayIdx's with GrpmIdx's
 public alias GrpmIdx = Typedef!(long, long.init, "grapheme");
-//public alias GrpmIdx = Typedef!(long, long.init, "grapheme");
 public alias ImGrpmIdx = immutable GrpmIdx;
 
 public alias GrpmCount = GrpmIdx;
@@ -141,7 +137,7 @@ struct GapBuffer
     /// This will use the fast array-based version of all text operations even if the buffer
     /// contains multi code point graphemes. Enabling this will make multi cp graphemes
     /// to don't display correctly.
-    public bool _forceFastMode = false;
+    package bool _forceFastMode = false;
 
     public @property @safe const pragma(inline)
     bool forceFastMode() const
@@ -531,6 +527,25 @@ struct GapBuffer
         return cursorPos;
     }
 
+    /*
+     * Delete the text between the specified grapheme positions.
+     * Returns:
+     *  The cursor position at the end.
+     */
+    public @safe
+    ImGrpmIdx deleteBetween(GrpmIdx start, GrpmIdx end)
+    in { assert(end > start); assert(start > 0); }
+    body
+    {
+        if (end > contentGrpmLen + 1 || start < 1)
+            return cursorPos;
+
+        cursorPos = start;
+        deleteRight(GrpmCount(end - start));
+
+        return cursorPos;
+    }
+
     /**
      * Adds text, moving the cursor to the end of the new text. Could cause
      * a reallocation of the buffer.
@@ -569,6 +584,19 @@ struct GapBuffer
         if (isSomeString!StrT)
     {
         return addText(asArray(text));
+    }
+
+    /**
+     * Adds text at the specific position. This will move the cursor.
+     * Returns:
+     *  The new cursor position
+     */
+    public @safe pragma(inline)
+    ImGrpmIdx addAtPosition(ImGrpmIdx start, const BufferType text)
+    {
+        cursorPos = start;
+        addText(text);
+        return cursorPos;
     }
 
     // Note: this is slow on the slow path so it should only be used on things

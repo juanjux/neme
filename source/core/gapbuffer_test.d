@@ -465,7 +465,6 @@ debug
 @safe unittest
 {
     // Same test with a tiny gapsize to force reallocation
-
     string text     = "1234567890";
     string combtext = "r̈a⃑⊥ b⃑67890";
 
@@ -497,6 +496,49 @@ debug
     assert(prevBufferSize == gb.buffer.length);
     assert(prevGapStart == gb.gapStart);
     assert(prevGapEnd == gb.gapEnd);
+}
+
+// deleteBetween
+@safe unittest
+{
+    string text     = "1234567890";
+    string combtext = "r̈a⃑⊥ b⃑67890";
+
+    foreach(txt; [text, combtext])
+    {
+        auto gb = gapbuffer(txt, 10);
+        auto oldMinusTwo = gb[2.GrpmIdx..$];
+        gb.deleteBetween(1.GrpmIdx, 3.GrpmIdx);
+        assert(gb.content == oldMinusTwo);
+
+        gb = gapbuffer(txt, 10);
+        auto oldMinutLastTwo = gb[0.GrpmIdx..8.GrpmIdx];
+        gb.deleteBetween(9.GrpmIdx, 11.GrpmIdx);
+        assert(gb.content == oldMinutLastTwo);
+
+        gb = gapbuffer(txt, 10);
+        gb.deleteBetween(1.GrpmIdx, 11.GrpmIdx);
+        assert(gb.length == 0);
+
+        gb = gapbuffer(txt, 10);
+        auto oldMinusMiddle = gb[0.GrpmIdx..2.GrpmIdx] ~ gb[4.GrpmIdx..10.GrpmIdx];
+        gb.deleteBetween(3.GrpmIdx, 5.GrpmIdx);
+        assert(gb.content == oldMinusMiddle);
+    }
+}
+
+// addAtPosition
+@safe unittest
+{
+    string text     = "1234567890";
+    string combtext = "r̈a⃑⊥ b⃑67890";
+
+    foreach(txt; [text, combtext])
+    {
+        auto gb = gapbuffer(txt, 10);
+        gb.addAtPosition(6.GrpmIdx, "foo");
+        assert(gb[5.GrpmIdx..$.GrpmIdx] == "foo67890");
+    }
 }
 
 // clear
