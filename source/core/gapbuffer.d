@@ -10,7 +10,7 @@ import std.range.primitives: popFrontExactly;
 import std.range: take, drop, array, tail;
 import std.stdio;
 import std.traits;
-import std.typecons: Typedef, Nullable;
+import std.typecons: Typedef, Nullable, Flag, Yes, No;
 import std.uni: byGrapheme, byCodePoint;
 import std.utf: byDchar;
 import core.memory: GC;
@@ -53,20 +53,19 @@ import core.memory: GC;
  * without having to use libraries to get the indices of code points.
  */
 
-alias BufferElement = dchar;
-alias BufferType = BufferElement[];
-
 // This seems to work pretty well for common use cases, can be changed
 // with the property configuredGapSize
 enum DefaultGapSize = 32 * 1024;
-
 enum Direction { Front, Back }
 
+alias BufferElement = dchar;
+alias BufferType    = BufferElement[];
+
 // For array positions / sizes. Using signed long to be able to detect negatives.
-alias ArrayIdx = long;
+alias ArrayIdx   = long;
 alias ImArrayIdx = immutable long;
 
-alias ArraySize = long;
+alias ArraySize   = long;
 alias ImArraySize = immutable long;
 
 // For grapheme positions / sizes. These are Typedefs to avoid bugs
@@ -140,11 +139,39 @@ struct GapBuffer
     // If we have combining unicode chars (several code points for a single
     // grapheme) some methods switch to a slower unicode-striding implementation.
     // The detection and update of this boolean is done checkCombinedGraphemes().
-    package bool hasCombiningGraphemes = false;
+    package bool _hasCombiningGraphemes = false;
     /// This will use the fast array-based version of all text operations even if the buffer
     /// contains multi code point graphemes. Enabling this will make multi cp graphemes
     /// to don't display correctly.
-    public bool forceFastMode = false;
+    public bool _forceFastMode = false;
+
+    public @property @safe const pragma(inline)
+    bool forceFastMode() const
+    {
+        return _forceFastMode;
+    }
+    public @property @safe pragma(inline)
+    void forceFastMode(bool force)
+    {
+        _forceFastMode = force;
+
+        if (!force)
+            // Dont remove Yes.forceCheck, could cause a recursive loop
+            checkCombinedGraphemes(content, Yes.forceCheck);
+    }
+
+    public @property @safe const pragma(inline)
+    bool hasCombiningGraphemes()
+    {
+        if (forceFastMode)
+            return false;
+        return _hasCombiningGraphemes;
+    }
+    private @property @safe pragma(inline)
+    void hasCombiningGraphemes(bool setComb)
+    {
+        _hasCombiningGraphemes = setComb;
+    }
 
     /// Normal constructor for a BufferType
     public @safe
@@ -170,7 +197,7 @@ struct GapBuffer
     // if false:
     // if (!hasCombiningGraphemes) checkCombinedGraphemes()
     package @safe pragma(inline)
-    void checkCombinedGraphemes(const(BufferType) text, bool forceCheck = false)
+    void checkCombinedGraphemes(const(BufferType) text, Flag!"forceCheck" forceCheck = No.forceCheck)
     {
         // TODO: short circuit the exit as soon as one difference is found
         // only a small text: only do the check if we didn't
@@ -183,9 +210,7 @@ struct GapBuffer
     package @safe pragma(inline)
     void checkCombinedGraphemes()
     {
-        // TODO: short circuit the exit as soon as one difference is found
-        // check all the text (for full loads and reallocations)
-        checkCombinedGraphemes(content, true);
+        checkCombinedGraphemes(content, Yes.forceCheck);
     }
 
 

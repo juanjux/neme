@@ -16,5 +16,29 @@
 	"subPackages": [],
 	"excludedSourceFiles": ["source/core/discarded.d", "source/core/exploratory/*"],
 	"dependencies": {
-	}
+	},
+	"configurations": [
+        {
+            "name": "pgo_generate",
+            "targetType": "executable",
+            "dflags": [
+                "-fprofile-instr-generate=profile.raw"
+            ]
+        },
+        {
+            "name": "pgo_build",
+            "targetType": "executable",
+            "dflags": [
+                "-fprofile-instr-use=profile.data",
+                "-O3"
+            ]
+        },
+        {
+            "name": "optimized",
+            "targetType": "executable",
+            "dflags": [
+                "-O3"
+            ]
+        }
+    ]
 }

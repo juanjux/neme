@@ -310,7 +310,7 @@ void bench()
     writeln("Programming sessions: ");
     benchProgrammingSessionCP!GapBuffer;
 
-    //benchReallocations();
+    benchReallocations();
 
     //uint iterations = 10_000_000;
     //bench_overlaps1(iterations);
