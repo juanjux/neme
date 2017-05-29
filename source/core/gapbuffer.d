@@ -35,6 +35,7 @@ import core.memory: GC;
 */
 
 // TODO: move to 0-based cursor positions
+
 // TODO: add a demo mode (you type but the buffer representation is shown in
 //       real time as you type or move the cursor)
 
@@ -100,7 +101,7 @@ if (isSomeString!STR)
 }
 
 
-public @trusted pragma(inline)
+public @safe pragma(inline)
 GapBuffer gapbuffer()
 {
     return GapBuffer("", DefaultGapSize);
@@ -217,7 +218,7 @@ struct GapBuffer
     // Starting from an ArrayIdx, count the number of codeunits that numGraphemes letters
     // take in the given direction.
     // TODO: check that this doesnt go over the gap
-    package @trusted const pragma(inline)
+    package @safe const pragma(inline)
     ArrayIdx idxDiffUntilGrapheme(ArrayIdx idx, GrpmCount numGraphemes, Direction dir)
     {
         // fast path
@@ -411,7 +412,7 @@ struct GapBuffer
                 Direction.Front);
 
         ImArrayIdx newGapStart = gapStart + idxDiff;
-        ImArrayIdx newGapEnd = gapEnd + idxDiff;
+        ImArrayIdx newGapEnd   = gapEnd   + idxDiff;
 
         if (overlaps(gapStart, newGapStart, gapEnd, newGapEnd)) {
             buffer[gapStart..newGapStart] = buffer[gapEnd..newGapEnd].dup;
@@ -425,7 +426,6 @@ struct GapBuffer
 
         contentBeforeGapGrpmLen += actualToMoveGrpm.to!long;
         contentAfterGapGrpmLen  -= actualToMoveGrpm.to!long;
-        //cursorPos               += actualToMoveGrpm.to!long;
         return cursorPos;
     }
 
@@ -434,7 +434,7 @@ struct GapBuffer
      * Params:
      *     count = the number of places to move to the left.
      */
-    public @trusted
+    public @safe
     ImGrpmIdx cursorBackward(GrpmCount count)
     in { assert(count >= 0.GrpmCount); }
     out(res) { assert(res > 0); }
@@ -480,7 +480,7 @@ struct GapBuffer
      * Params:
      *     count = the numbers of chars to delete.
      */
-    public @trusted
+    public @safe
     ImGrpmIdx deleteLeft(GrpmCount count)
     in { assert(count >= 0.GrpmCount); }
     out(res) { assert(res > 0); }
@@ -508,7 +508,7 @@ struct GapBuffer
       * Params:
       *     count = the number of chars to delete.
       */
-    public @trusted
+    public @safe
     ImGrpmIdx deleteRight(GrpmCount count)
     in { assert(count >= 0.GrpmCount); }
     out(res) { assert(res > 0); }
@@ -552,7 +552,7 @@ struct GapBuffer
      * Params:
      *     text = text to add.
      */
-    public @trusted
+    public @safe
     ImGrpmIdx addText(const BufferType text)
     out(res) { assert(res > 0); }
     body
@@ -601,7 +601,7 @@ struct GapBuffer
 
     // Note: this is slow on the slow path so it should only be used on things
     // that are slow anyway like clear() or reallocate()
-    package @trusted pragma(inline)
+    package @safe pragma(inline)
     void updateGrpmLens()
     {
         if (_forceFastMode || !hasCombiningGraphemes) {
@@ -702,7 +702,7 @@ struct GapBuffer
         checkCombinedGraphemes();
         updateGrpmLens();
     }
-    package @trusted pragma(inline)
+    package @safe pragma(inline)
     void reallocate()
     {
         reallocate(null);
@@ -746,7 +746,7 @@ struct GapBuffer
     /**
      * index operator read: auto x = gapBuffer[0..3]
      */
-    public @trusted pragma(inline)
+    public @safe pragma(inline)
     const(BufferType) opSlice(GrpmIdx start, GrpmIdx end)
     {
         // fast path
