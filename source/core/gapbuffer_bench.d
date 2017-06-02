@@ -225,7 +225,8 @@ private void benchProgrammingSessionCP(GBType)()
 
     TickDuration[1] duration = void;
 
-    // best benchmark done with dub run --compiler=ldc2 --build=release-nobounds
+    // XXX redo with -O3 -mcpu=skylake
+    // best benchmark done with dub run --compiler=ldc2 --build=release-nobounds --config=optimized
 
 
     /+
@@ -303,12 +304,54 @@ void benchReallocations()
     GC.minimize();
 }
 
+version(none){
+private void benchCurrentLine()
+{
+    // TODO: test also the fast path
+    // 1325 lines
+    enum code = import("fixtures/testbench_code_multicp.txt");
+    auto gb = gapbuffer(code);
+    gb.indexNewlines;
+    auto iterations = 1;
+
+    void test1() {
+        ArrayIdx a;
+        gb.cursorPos = 0.GrpmIdx;
+        for(uint i=0; i < 400_000; i++) {
+            gb.cursorForward(1.GrpmCount);
+            a = gb.currentLine;
+        }
+    }
+    void test2() {
+        ArrayIdx a;
+        gb.cursorPos = 0.GrpmIdx;
+        for(uint i=0; i < 400_000; i++) {
+            gb.cursorForward(1.GrpmCount);
+            a = gb.currentLine2;
+        }
+    }
+
+    auto duration = benchmark!test1(1);
+    writeln("currentLine short: ", to!Duration(duration[0]));
+
+    duration = benchmark!test2(1);
+    writeln("currentLine smart: ", to!Duration(duration[0]));
+
+    duration = benchmark!(() => gb.currentLine)(1);
+    writeln("single short: ", to!Duration(duration[0]));
+
+    duration = benchmark!(() => gb.currentLine2)(1);
+    writeln("single short: ", to!Duration(duration[0]));
+}
+}
+
 void bench()
 {
-    auto g = gapbuffer();
+    //auto g = gapbuffer;
     writeln("Programming sessions: ");
     benchProgrammingSessionCP!GapBuffer;
-    benchReallocations();
+    benchReallocations;
+    //benchCurrentLine;
 
     //uint iterations = 10_000_000;
     //bench_overlaps1(iterations);

@@ -34,12 +34,11 @@ import core.memory: GC;
  (currently no check is done when deleting characters for performance reasons).
 */
 
-// TODO: move to 0-based cursor positions
+// TODO: update the line number cache on modify, check if it has to be done also
+// for move
 
 // TODO: add a demo mode (you type but the buffer representation is shown in
 //       real time as you type or move the cursor)
-
-// TODO: line number cache in the data structure
 
 // TODO: Unify doc comment style
 
@@ -139,6 +138,15 @@ struct GapBuffer
     /// contains multi code point graphemes. Enabling this will make multi cp graphemes
     /// to don't display correctly.
     package bool _forceFastMode = false;
+
+    // Map holding the (absolute and without accounting for the gap, ArrayIdx)
+    // position of all newline characters. The key is the line
+    // number and the value is an array with the newline offset
+    package ArrayIdx[ArrayIdx] _newLines;
+
+    // Average line length in the file. Used to optimie currentLine. Updated
+    // on indexNewLines()
+    package ulong _averageLineLen = 90;
 
     public @property @safe const pragma(inline)
     bool forceFastMode() const
@@ -261,14 +269,16 @@ struct GapBuffer
     public @safe
     void debugContent()
     {
+        import std.array: replace;
+
         writeln("gapstart: ", gapStart, " gapend: ", gapEnd, " len: ", buffer.length,
                 " currentGapSize: ", currentGapSize, " configuredGapSize: ", _configuredGapSize,
                 " contentGrpmLen: ", contentGrpmLen, " contentCPLen: ", content.byCodePoint.count);
-        writeln("BeforeGap:|", contentBeforeGap,"|");
-        writeln("AfterGap:|", contentAfterGap, "|");
-        writeln("Text content:|", content, "|");
+        writeln("BeforeGap:|", contentBeforeGap.replace("\n", "/"),"|");
+        writeln("AfterGap:|", contentAfterGap.replace("\n", "/"), "|");
+        writeln("Text content:|", content.replace("\n", "/"), "|");
         writeln("Full buffer:");
-        writeln(buffer);
+        writeln(buffer.replace("\n", "/"));
         foreach (_; buffer[0 .. gapStart].byGrapheme)
         {
             write(" ");
@@ -369,10 +379,10 @@ struct GapBuffer
      */
     public @property @safe const pragma(inline)
     GrpmIdx cursorPos()
-    out(res) { assert(res > 0); }
+    out(res) { assert(res >= 0); }
     body
     {
-        return GrpmIdx(contentBeforeGapGrpmLen + 1);
+        return GrpmIdx(contentBeforeGapGrpmLen);
     }
 
     /**
@@ -381,7 +391,7 @@ struct GapBuffer
      */
     public @property @safe pragma(inline)
     void cursorPos(GrpmIdx pos)
-    in { assert(pos > 0.GrpmIdx); }
+    in { assert(pos >= 0.GrpmIdx); }
     body
     {
         pos = min(pos, contentGrpmLen);
@@ -401,7 +411,7 @@ struct GapBuffer
     public @safe
     ImGrpmIdx cursorForward(GrpmCount count)
     in { assert(count >= 0.GrpmCount); }
-    out(res) { assert(res > 0); }
+    out(res) { assert(res >= 0); }
     body
     {
         if (count <= 0 || buffer.length == 0 || gapEnd + 1 == buffer.length)
@@ -437,7 +447,7 @@ struct GapBuffer
     public @safe
     ImGrpmIdx cursorBackward(GrpmCount count)
     in { assert(count >= 0.GrpmCount); }
-    out(res) { assert(res > 0); }
+    out(res) { assert(res >= 0); }
     body
     {
         if (count <= 0 || buffer.length == 0 || gapStart == 0)
@@ -483,7 +493,7 @@ struct GapBuffer
     public @safe
     ImGrpmIdx deleteLeft(GrpmCount count)
     in { assert(count >= 0.GrpmCount); }
-    out(res) { assert(res > 0); }
+    out(res) { assert(res >= 0); }
     body
     {
         if (buffer.length == 0 || gapStart == 0)
@@ -511,7 +521,7 @@ struct GapBuffer
     public @safe
     ImGrpmIdx deleteRight(GrpmCount count)
     in { assert(count >= 0.GrpmCount); }
-    out(res) { assert(res > 0); }
+    out(res) { assert(res >= 0); }
     body
     {
         if (buffer.length == 0 || gapEnd == buffer.length)
@@ -534,10 +544,10 @@ struct GapBuffer
      */
     public @safe
     ImGrpmIdx deleteBetween(GrpmIdx start, GrpmIdx end)
-    in { assert(end > start); assert(start > 0); }
+    in { assert(end > start); assert(start >= 0); }
     body
     {
-        if (end > contentGrpmLen + 1 || start < 1)
+        if (end > contentGrpmLen || start < 0)
             return cursorPos;
 
         cursorPos = start;
@@ -554,7 +564,7 @@ struct GapBuffer
      */
     public @safe
     ImGrpmIdx addText(const BufferType text)
-    out(res) { assert(res > 0); }
+    out(res) { assert(res >= 0); }
     body
     {
         if (text.length >= currentGapSize) {
@@ -624,7 +634,7 @@ struct GapBuffer
      */
     public @safe
     ImGrpmIdx clear(const BufferType text, bool moveToEndEnd=true)
-    out(res) { assert(res > 0); }
+    out(res) { assert(res >= 0); }
     body
     {
         bool noRealloc = buffer.length >= text.length + _configuredGapSize;
@@ -658,7 +668,7 @@ struct GapBuffer
     }
     public @safe
     ImGrpmIdx clear()
-    out(res) { assert(res > 0); }
+    out(res) { assert(res >= 0); }
     body
     {
         return clear(null, false);
@@ -697,7 +707,7 @@ struct GapBuffer
         buffer.insertInPlace(gapStart, textToAdd, gapExtension);
         gapStart += textToAdd.length;
         gapEnd = buffer.length - oldContentAfterGapSize;
-        reallocCount += 1;
+        ++reallocCount;
 
         checkCombinedGraphemes();
         updateGrpmLens();
@@ -712,6 +722,86 @@ struct GapBuffer
     if (isSomeString!StrT)
     {
         reallocate(asArray(textToAdd));
+    }
+
+
+    // TODO: paralellize with paralell foreach
+    public @trusted pure nothrow
+    void indexNewlines()
+    {
+        _newLines.clear;
+        ulong nlIndex = 0;
+        ulong linesLengthSum;
+        ulong prevOffset;
+
+        foreach(offset, cp; buffer) {
+            ulong vOffset = offset;
+            if (cp == '\n') {
+                if (offset > (gapEnd - gapStart)) {
+                    vOffset -= gapEnd;
+                }
+                _newLines[nlIndex] = vOffset;
+                ++nlIndex;
+            }
+            linesLengthSum += vOffset - prevOffset;
+            prevOffset = vOffset;
+        }
+        _averageLineLen = linesLengthSum / nlIndex;
+    }
+
+    // TODO: fuzzy test this
+    /**
+     * Returns the current line inside the buffer (0-based index)
+     */
+    public @safe @property  pure nothrow const
+    ArrayIdx currentLine()
+    {
+        auto pos = gapStart;
+        auto aprox = min(_newLines.length - 1, (pos / _averageLineLen) - 1);
+
+        while (true) {
+            if (aprox >_newLines.length || aprox < 0) {
+                return aprox;
+            }
+
+            auto maybeNewLine = _newLines[aprox];
+
+            if (maybeNewLine == pos) {
+                // Lucky shot
+                return aprox;
+            }
+
+            if (maybeNewLine > pos) {
+                // Before
+
+                if (aprox == 0)
+                    // and it was the first, so found
+                    return 0;
+
+                // Check the position of the previous newline to see if our pos is between them
+                if (_newLines[aprox - 1] < pos) {
+                    return aprox;
+                }
+
+                // Not, found continue searching back
+                --aprox;
+            }
+
+            else if (maybeNewLine < pos) {
+                // After
+
+                // Check the position of the next newline to see if our pos is between them
+                if (_newLines[aprox + 1] > pos) {
+                    return aprox + 1;
+                }
+
+                // Not found, continue searching front
+                ++aprox;
+            }
+            else {
+                assert(false, "Bug in currentLine");
+            }
+        }
     }
 
     /+

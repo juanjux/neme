@@ -37,7 +37,8 @@
             "name": "optimized",
             "targetType": "executable",
             "dflags": [
-                "-O3"
+                "-O3", 
+                "-mcpu=skylake"
             ]
         },
         { 

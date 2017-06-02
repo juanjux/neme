@@ -168,36 +168,36 @@ debug
 
     auto gb = gapbuffer(combtext, 10);
     assert(gb.hasCombiningGraphemes);
-    assert(gb.cursorPos == 1);
+    assert(gb.cursorPos == 0);
     assert(gb.contentBeforeGapGrpmLen == 0);
     assert(gb.contentAfterGapGrpmLen == combtextGrpmLen);
 
     gb.cursorForward(1.GrpmCount);
-    assert(gb.cursorPos == 2);
+    assert(gb.cursorPos == 1);
     assert(gb.cursorPos == gb.cursorPos);
     assert(gb.contentBeforeGapGrpmLen == 1);
     assert(gb.contentAfterGapGrpmLen == combtextGrpmLen - 1);
 
 
     gb.cursorForward(1000.GrpmCount);
-    assert(gb.cursorPos == combtextGrpmLen + 1);
-    assert(gb.cursorPos == gb.contentGrpmLen + 1);
+    assert(gb.cursorPos == combtextGrpmLen);
+    assert(gb.cursorPos == gb.contentGrpmLen);
     assert(gb.contentBeforeGapGrpmLen == combtextGrpmLen);
     assert(gb.contentAfterGapGrpmLen == 0);
 
     gb.cursorBackward(1.GrpmCount);
-    assert(gb.cursorPos == combtextGrpmLen);
-    assert(gb.cursorPos == gb.contentGrpmLen);
+    assert(gb.cursorPos == combtextGrpmLen - 1);
+    assert(gb.cursorPos == gb.contentGrpmLen - 1);
     assert(gb.contentBeforeGapGrpmLen == combtextGrpmLen - 1);
     assert(gb.contentAfterGapGrpmLen == 1);
 
     gb.cursorBackward(GrpmCount(1000));
-    assert(gb.cursorPos == 1);
+    assert(gb.cursorPos == 0);
     assert(gb.contentBeforeGapGrpmLen == 0);
     assert(gb.contentAfterGapGrpmLen == combtextGrpmLen);
 
-    gb.cursorPos = GrpmCount(1);
-    assert(gb.cursorPos == 1);
+    gb.cursorPos = GrpmCount(0);
+    assert(gb.cursorPos == 0);
     assert(gb.contentBeforeGapGrpmLen == 0);
     assert(gb.contentAfterGapGrpmLen == combtextGrpmLen);
 }
@@ -394,16 +394,16 @@ debug
     {
         auto gb = gapbuffer(txt);
 
-        assert(gb.cursorPos == 1);
+        assert(gb.cursorPos == 0);
 
         gb.cursorForward(5.GrpmCount);
-        assert(gb.cursorPos == 6);
+        assert(gb.cursorPos == 5);
         assert(gb.contentBeforeGap == txt.graphemeSlice(0.GrpmIdx, 5.GrpmIdx));
         assert(gb.contentAfterGap == "67890");
 
         gb.cursorForward(10_000.GrpmCount);
         gb.cursorBackward(4.GrpmCount);
-        assert(gb.cursorPos == gb.length - 4 + 1);
+        assert(gb.cursorPos == gb.length - 4);
         assert(gb.contentBeforeGap == txt.graphemeSlice(0.GrpmIdx, 6.GrpmIdx));
         assert(gb.contentAfterGap == "7890");
 
@@ -424,17 +424,17 @@ debug
     {
         auto gb  = gapbuffer(txt);
         assert(gb.contentGrpmLen == 10);
-        assert(gb.cursorPos == 1);
+        assert(gb.cursorPos == 0);
         assert(gb.contentAfterGap.to!string == txt);
 
         gb.cursorPos = 6.GrpmIdx;
         assert(gb.contentGrpmLen == 10);
         assert(gb.cursorPos == 6);
-        assert(gb.contentBeforeGap.to!string == txt.graphemeSlice(0.GrpmIdx, 5.GrpmIdx).text);
-        assert(gb.contentAfterGap == "67890");
+        assert(gb.contentBeforeGap.to!string == txt.graphemeSlice(0.GrpmIdx, 6.GrpmIdx).text);
+        assert(gb.contentAfterGap == "7890");
 
-        gb.cursorPos(1.GrpmCount);
-        assert(gb.cursorPos == 1);
+        gb.cursorPos(0.GrpmCount);
+        assert(gb.cursorPos == 0);
         assert(gb.contentAfterGap.to!string == txt);
     }
 }
@@ -508,21 +508,21 @@ debug
     {
         auto gb = gapbuffer(txt, 10);
         auto oldMinusTwo = gb[2.GrpmIdx..$];
-        gb.deleteBetween(1.GrpmIdx, 3.GrpmIdx);
+        gb.deleteBetween(0.GrpmIdx, 2.GrpmIdx);
         assert(gb.content == oldMinusTwo);
 
         gb = gapbuffer(txt, 10);
         auto oldMinutLastTwo = gb[0.GrpmIdx..8.GrpmIdx];
-        gb.deleteBetween(9.GrpmIdx, 11.GrpmIdx);
+        gb.deleteBetween(8.GrpmIdx, 10.GrpmIdx);
         assert(gb.content == oldMinutLastTwo);
 
         gb = gapbuffer(txt, 10);
-        gb.deleteBetween(1.GrpmIdx, 11.GrpmIdx);
+        gb.deleteBetween(0.GrpmIdx, 10.GrpmIdx);
         assert(gb.length == 0);
 
         gb = gapbuffer(txt, 10);
         auto oldMinusMiddle = gb[0.GrpmIdx..2.GrpmIdx] ~ gb[4.GrpmIdx..10.GrpmIdx];
-        gb.deleteBetween(3.GrpmIdx, 5.GrpmIdx);
+        gb.deleteBetween(2.GrpmIdx, 4.GrpmIdx);
         assert(gb.content == oldMinusMiddle);
     }
 }
@@ -536,7 +536,7 @@ debug
     foreach(txt; [text, combtext])
     {
         auto gb = gapbuffer(txt, 10);
-        gb.addAtPosition(6.GrpmIdx, "foo");
+        gb.addAtPosition(5.GrpmIdx, "foo");
         assert(gb[5.GrpmIdx..$.GrpmIdx] == "foo67890");
     }
 }
@@ -590,7 +590,7 @@ debug
         assert(gb.buffer.length == (gb.configuredGapSize + newText.length));
         assert(gb.content.length == newText.length);
         assert(gb.content.to!string == newText);
-        assert(gb.cursorPos == newText.length + 1);
+        assert(gb.cursorPos == newText.length);
         assert(gb.gapStart == newText.length);
         assert(gb.gapEnd == gb.buffer.length);
     }
@@ -606,7 +606,7 @@ debug
     assert(gb.buffer.length == (gb.configuredGapSize + newText.length));
     assert(gb.content.length == newText.length);
     assert(gb.content.to!string == newText);
-    assert(gb.cursorPos == 1);
+    assert(gb.cursorPos == 0);
     assert(gb.gapStart == 0);
     // check that the text was written from the start and not using addtext
     assert(gb.gapEnd == gb.configuredGapSize);
@@ -718,6 +718,60 @@ debug
     assert(gbc[] == combtext);
     assert(gbc[] == gbc.content);
 }
+
+// indexNewLines
+@safe unittest
+{
+    auto gb = gapbuffer("012345678\n012\n", 10);
+    gb.indexNewlines;
+    assert(gb._newLines[0] == 9);
+    assert(gb._newLines[1] == 13);
+    assert(gb._averageLineLen == 6);
+}
+
+// currentLine
+@safe unittest
+{
+    string text = "01\n34\n67\n90\n";
+    string combtext = "01\n34\n67\n90\nr̈a⃑⊥ b⃑\n";
+
+    foreach(txt; [text, combtext]) {
+        auto gb = gapbuffer(txt, 10);
+        gb.indexNewlines;
+
+        assert(gb.currentLine == 0);   // pos = 0
+        gb.cursorForward(1.GrpmCount); // pos = 1
+        assert(gb.currentLine == 0);
+
+        gb.cursorForward(1.GrpmCount); // pos = 2
+        assert(gb.currentLine == 0);
+
+        gb.cursorForward(1.GrpmCount); // pos = 3
+        assert(gb.currentLine == 1);
+
+        gb.cursorBackward(1.GrpmCount); // pos = 2
+        assert(gb.currentLine == 0);
+
+        gb.cursorForward(2.GrpmCount); // pos = 4
+        assert(gb.currentLine == 1);
+
+        gb.cursorForward(3.GrpmCount); // pos = 7
+        assert(gb.currentLine == 2);
+
+        gb.cursorForward(1.GrpmCount); // pos = 8
+        assert(gb.currentLine == 2);
+
+        gb.cursorForward(2.GrpmCount); // pos = 10
+        assert(gb.currentLine == 3);
+
+        gb.cursorForward(1.GrpmCount); // pos = 11
+        assert(gb.currentLine == 3);
+    }
+}
+
+
+// TODO: newLines2
+
 
 // General test
 
