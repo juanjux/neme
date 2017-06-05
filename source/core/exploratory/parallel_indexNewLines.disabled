@@ -1,0 +1,102 @@
+public @trusted
+void indexNewLinesParallel()
+{
+    import std.parallelism: totalCPUs, parallel;
+
+
+    // Divide the file into n parts, ignoring the gap
+    auto numTasks = totalCPUs;
+    auto chunkSize = (buffer.length - currentGapSize) / numTasks;
+
+    // Generate an array with start-end positions, ignoring the gap
+    //auto indexesToSearch = new long[][1];
+    long[2][] indexesToSearch;
+
+    ArrayIdx currentOffset;
+
+    foreach(i; 0..numTasks) {
+        ArrayIdx chunkStart, chunkEnd;
+
+        // Start
+        if (insideGap(currentOffset)) {
+            // start is inside the gap, move it after
+            chunkStart = gapEnd + 1;
+        } else {
+            chunkStart = currentOffset;
+        }
+        currentOffset = chunkStart;
+
+        // End
+        chunkEnd = min(currentOffset + chunkSize - 1, buffer.length - 1);
+        if (insideGap(chunkEnd)) {
+            // this cover part of the gap but the paralellized task will skip it
+            chunkEnd = min(gapEnd + currentGapSize, buffer.length - 1);
+        }
+        currentOffset = chunkEnd + 1;
+        indexesToSearch ~= [chunkStart, chunkEnd];
+    }
+
+    import core.sync.mutex: Mutex;
+    __gshared Mutex mtx;
+     mtx = new Mutex();
+    __gshared ulong lineLenTotal;
+    __gshared typeof(_newLines)[ulong] newLinesPartials;
+
+    foreach(i, positions; parallel(indexesToSearch)) {
+        typeof(_newLines) newLinesLocal;
+        bool afterGap = false;
+        ulong nlIndex;
+        ulong prevOffset;
+        ulong sumLineLens;
+
+        foreach(ref offset; positions[0]..positions[1]+1) {
+            if (insideGap(offset)) {
+                // ignore the gap
+                offset = gapEnd;
+                continue;
+            }
+
+            if(!afterGap && offset > gapEnd)
+                afterGap = true;
+
+            // offset without the gap (by content)
+            ulong vOffset = afterGap? offset-currentGapSize: offset;
+            auto cp = buffer[offset];
+
+            if (cp == '\n') {
+                // Store in the map [newline#]: newlineOffset
+                newLinesLocal[nlIndex] = vOffset;
+                ++nlIndex;
+
+                // Add the current line length to the array to calculate the avg later
+                // lock o partial + lock
+                sumLineLens += vOffset - prevOffset;
+                prevOffset = vOffset;
+            }
+            //writeln("i: ", i, " offset: ", offset, " vOffset: ", vOffset, " cp: ", cp);
+
+        }
+        // XXX FIXME calculate the avgLineLen
+        _averageLineLen = 90;
+
+        {
+            mtx.lock;
+            scope(exit) mtx.unlock;
+            newLinesPartials[i] = newLinesLocal;
+            lineLenTotal += sumLineLens;
+        }
+    }
+
+    import std.algorithm: sort;
+
+    // Merge the partial per-task newline information into the single this._newLines
+    auto sortedPartialKeys = sort(newLinesPartials.keys.dup).array;
+    ulong globalNlNumber;
+
+    foreach(numPartial; sortedPartialKeys) {
+        foreach(key, val; newLinesPartials[numPartial]) {
+            _newLines[globalNlNumber] = val;
+            ++globalNlNumber;
+        }
+    }
+}

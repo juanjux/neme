@@ -18,6 +18,9 @@
 	"dependencies": {
 	},
 	"configurations": [
+        { 
+            "name": "debug"
+        },
         {
             "name": "pgo_generate",
             "targetType": "executable",
@@ -41,8 +44,9 @@
                 "-mcpu=skylake"
             ]
         },
-        { 
-            "name": "test"
-        }
+        {
+            "name": "optimizeddmd",
+            "targetType": "executable",
+        },
     ]
 }

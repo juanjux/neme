@@ -307,11 +307,10 @@ void benchReallocations()
 version(none){
 private void benchCurrentLine()
 {
-    // TODO: test also the fast path
     // 1325 lines
     enum code = import("fixtures/testbench_code_multicp.txt");
     auto gb = gapbuffer(code);
-    gb.indexNewlines;
+    gb.indexNewLines;
     auto iterations = 1;
 
     void test1() {
@@ -341,16 +340,50 @@ private void benchCurrentLine()
     writeln("single short: ", to!Duration(duration[0]));
 
     duration = benchmark!(() => gb.currentLine2)(1);
-    writeln("single short: ", to!Duration(duration[0]));
+    writeln("single smart: ", to!Duration(duration[0]));
 }
+}
+
+private void benchCurrentLineSerialVsParallel()
+{
+    // TODO: test also the fast path and a small file
+    // 1325 lines
+
+    // Benchmark result: the serial version is 25x faster for normal
+    // programming files (test with 1325 lines file). With a 100MB file
+    // they're about the same speed. From that size on, the paralell version is
+    // faster. I'm storing the parallel version in the exploratory/ dir
+    // just in case I add a "huge file mode" feature in the future.
+
+    enum code = import("fixtures/testbench_code_multicp.txt");
+    auto gb = gapbuffer(code);
+    auto iterations = 1;
+
+    auto duration = benchmark!(() => gb.indexNewLines)(iterations);
+    writeln("single serial: ", to!Duration(duration[0]));
+
+    duration = benchmark!(() => gb.indexNewLinesParallel)(iterations);
+    writeln("single parallel: ", to!Duration(duration[0]));
+
+    // Huge file
+    enum code2 = import("fixtures/hugeipsum.txt");
+    auto gb2 = gapbuffer(code2);
+
+    duration = benchmark!(() => gb2.indexNewLines)(iterations);
+    writeln("single serial big: ", to!Duration(duration[0]));
+
+    duration = benchmark!(() => gb2.indexNewLinesParallel)(iterations);
+    writeln("single parallel big: ", to!Duration(duration[0]));
 }
 
 void bench()
 {
     //auto g = gapbuffer;
-    writeln("Programming sessions: ");
-    benchProgrammingSessionCP!GapBuffer;
-    benchReallocations;
+    //writeln("Programming sessions: ");
+    //benchProgrammingSessionCP!GapBuffer;
+    //writeln("Reallocations: ");
+    //benchReallocations;
+    benchCurrentLineSerialVsParallel;
     //benchCurrentLine;
 
     //uint iterations = 10_000_000;

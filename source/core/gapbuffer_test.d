@@ -723,7 +723,7 @@ debug
 @safe unittest
 {
     auto gb = gapbuffer("012345678\n012\n", 10);
-    gb.indexNewlines;
+    gb.indexNewLines;
     assert(gb._newLines[0] == 9);
     assert(gb._newLines[1] == 13);
     assert(gb._averageLineLen == 6);
@@ -732,12 +732,12 @@ debug
 // currentLine
 @safe unittest
 {
-    string text = "01\n34\n67\n90\n";
+    string text =     "01\n34\n67\n90\n";
     string combtext = "01\n34\n67\n90\nr̈a⃑⊥ b⃑\n";
 
     foreach(txt; [text, combtext]) {
         auto gb = gapbuffer(txt, 10);
-        gb.indexNewlines;
+        gb.indexNewLines;
 
         assert(gb.currentLine == 0);   // pos = 0
         gb.cursorForward(1.GrpmCount); // pos = 1
@@ -768,9 +768,6 @@ debug
         assert(gb.currentLine == 3);
     }
 }
-
-
-// TODO: newLines2
 
 
 // General test

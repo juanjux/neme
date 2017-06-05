@@ -8,5 +8,7 @@ __test__*__
 neme
 neme-test-application
 neme-test-default
+neme-test-test
+neme-test-debug
 .vscode/*
 dub.selections.json

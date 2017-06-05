@@ -1,5 +1,6 @@
 module neme.core.gapbuffer;
 
+// TODO: move these to local imports when only used once
 import std.algorithm.comparison : max, min;
 import std.algorithm: copy, count;
 import std.array : appender, insertInPlace, join, minimallyInitializedArray;
@@ -10,8 +11,8 @@ import std.range.primitives: popFrontExactly;
 import std.range: take, drop, array, tail;
 import std.stdio;
 import std.traits;
-import std.typecons: Typedef, Nullable, Flag, Yes, No;
-import std.uni: byGrapheme, byCodePoint;
+import std.typecons: Typedef, Flag, Yes, No;
+import std.uni: byCodePoint, byGrapheme;
 import std.utf: byDchar;
 import core.memory: GC;
 
@@ -33,6 +34,8 @@ import core.memory: GC;
  is updated every time text is added to the buffer to the array is reallocated
  (currently no check is done when deleting characters for performance reasons).
 */
+
+// TODO: paralellize indexNewLines for big files
 
 // TODO: update the line number cache on modify, check if it has to be done also
 // for move
@@ -80,7 +83,8 @@ BufferType asArray(StrT = string)(StrT str)
     return to!(BufferType)(str.to!dstring);
 }
 
-@safe @nogc pure pragma(inline)
+// TODO: unittest
+package pure @safe @nogc pragma(inline)
 bool overlaps(ulong destStart, ulong destEnd, ulong sourceStart, ulong sourceEnd)
 {
     return !(
@@ -148,6 +152,12 @@ struct GapBuffer
     // on indexNewLines()
     package ulong _averageLineLen = 90;
 
+    package const pure nothrow @safe @nogc pragma(inline)
+    bool insideGap(ArrayIdx pos)
+    {
+        return (pos >= gapStart && pos <= gapEnd);
+    }
+
     public @property @safe const pragma(inline)
     bool forceFastMode() const
     {
@@ -213,7 +223,7 @@ struct GapBuffer
 
 
     // Returns the number of graphemes in the text.
-    public @safe const pragma(inline) inout
+    public const @safe pragma(inline) inout
     inout(GrpmCount) countGraphemes(const BufferType  slice)
     {
         // fast path
@@ -226,7 +236,7 @@ struct GapBuffer
     // Starting from an ArrayIdx, count the number of codeunits that numGraphemes letters
     // take in the given direction.
     // TODO: check that this doesnt go over the gap
-    package @safe const pragma(inline)
+    package const @safe pragma(inline)
     ArrayIdx idxDiffUntilGrapheme(ArrayIdx idx, GrpmCount numGraphemes, Direction dir)
     {
         // fast path
@@ -246,7 +256,7 @@ struct GapBuffer
     }
 
     // Create a new gap (empty array) with the configured size
-    package @safe nothrow pragma(inline)
+    package nothrow @safe pragma(inline)
     BufferType createNewGap(ArraySize gapSize=0)
     {
         // if a new gapsize was specified use that, else use the configured default
@@ -297,7 +307,7 @@ struct GapBuffer
      * The returned const array will be a direct reference to the
      * contents inside the buffer.
      */
-    public @property @safe nothrow @nogc const pragma(inline)
+    public const pure nothrow @property @safe @nogc pragma(inline)
     const(BufferType) contentBeforeGap()
     {
         return buffer[0..gapStart];
@@ -308,7 +318,7 @@ struct GapBuffer
      * The returned const array will be a direct reference to the
      * contents inside the buffer.
      */
-    public @property @safe nothrow @nogc const pragma(inline)
+    public const pure nothrow @property @safe @nogc pragma(inline)
     const(BufferType) contentAfterGap()
     {
         return buffer[gapEnd .. $];
@@ -321,7 +331,7 @@ struct GapBuffer
      *
      * Returns: The content of the buffer, as BufferElement.
      */
-    public @property @safe nothrow pragma(inline)
+    public const pure nothrow @property @safe pragma(inline)
     const(BufferType) content()
     {
         return contentBeforeGap ~ contentAfterGap;
@@ -329,7 +339,7 @@ struct GapBuffer
 
     // Current gap size. The returned size is the number of chartype elements
     // (NOT bytes).
-    public @property @safe nothrow @nogc const pragma(inline)
+    public const pure nothrow @property @safe @nogc pragma(inline)
     ArraySize currentGapSize()
     {
         return gapEnd - gapStart;
@@ -342,7 +352,7 @@ struct GapBuffer
      * Returns:
      *     The configured gap size.
      */
-    public @property @safe nothrow pure @nogc const pragma(inline)
+    public const pure nothrow @property @safe @nogc pragma(inline)
     ArraySize configuredGapSize()
     {
         return _configuredGapSize;
@@ -367,7 +377,7 @@ struct GapBuffer
     /// Return the number of visual chars (graphemes). This number can be
     /// different / from the number of chartype elements or even unicode code
     /// points.
-    public @property @safe const pragma(inline)
+    public const @property @safe pragma(inline)
     GrpmCount contentGrpmLen()
     {
         return GrpmCount(contentBeforeGapGrpmLen + contentAfterGapGrpmLen);
@@ -377,7 +387,7 @@ struct GapBuffer
     /**
      * Returns the cursor position
      */
-    public @property @safe const pragma(inline)
+    public const pure nothrow @property @safe pragma(inline)
     GrpmIdx cursorPos()
     out(res) { assert(res >= 0); }
     body
@@ -724,27 +734,48 @@ struct GapBuffer
         reallocate(asArray(textToAdd));
     }
 
+    // Implementation note: in exploratory/ there is a parallel (and uglier) version of this but for
+    // normal files it was 25x slower than this serial version. For 100MB files it was about
+    // the same speed and from there it was faster; could be recovered if in the future I add a
+    // "big file mode".
 
-    // TODO: paralellize with paralell foreach
-    public @trusted pure nothrow
-    void indexNewlines()
+    // TODO: add unittests with \n in the gap, just before gapStart and just after gapEnd
+    // TODO: fuzzy test
+    public nothrow pure @trusted
+    void indexNewLines()
     {
-        _newLines.clear;
-        ulong nlIndex = 0;
+        ulong nlIndex;
+        // For calculating the average lenth, used to optimize currentLine():
         ulong linesLengthSum;
         ulong prevOffset;
+        bool afterGap = false;
+        _newLines.clear();
 
-        foreach(offset, cp; buffer) {
+        foreach(ref offset, cp; buffer) {
+            if (insideGap(offset)) {
+                // ignore the gap
+                offset = gapEnd;
+                continue;
+            }
+
+            if(!afterGap && offset > gapEnd)
+                afterGap = true;
+
+            // offset without the gap (by-content):
             ulong vOffset = offset;
+
             if (cp == '\n') {
-                if (offset > (gapEnd - gapStart)) {
-                    vOffset -= gapEnd;
-                }
+                if (afterGap)
+                    vOffset -= currentGapSize;
+
+                // Store in the map [newLine#] : newlineOffset
                 _newLines[nlIndex] = vOffset;
                 ++nlIndex;
+
+                // Add the current line length (numchars from the prevOffset to this \n)
+                linesLengthSum += vOffset - prevOffset;
+                prevOffset = vOffset;
             }
-            linesLengthSum += vOffset - prevOffset;
-            prevOffset = vOffset;
         }
         _averageLineLen = linesLengthSum / nlIndex;
     }
@@ -753,7 +784,7 @@ struct GapBuffer
     /**
      * Returns the current line inside the buffer (0-based index)
      */
-    public @safe @property  pure nothrow const
+    public pure nothrow const @safe @property
     ArrayIdx currentLine()
     {
         auto pos = gapStart;
@@ -818,7 +849,7 @@ struct GapBuffer
     /// OpIndex: BufferType b = gapbuffer[3];
     /// Please note that this returns a BufferType and NOT a single
     /// BufferElement because the returned character could take several code points/units.
-    public @safe pragma(inline)
+    public const @safe pragma(inline)
     const(BufferType) opIndex(GrpmIdx pos)
     {
         // fast path
@@ -836,7 +867,7 @@ struct GapBuffer
     /**
      * index operator read: auto x = gapBuffer[0..3]
      */
-    public @safe pragma(inline)
+    public const @safe pragma(inline)
     const(BufferType) opSlice(GrpmIdx start, GrpmIdx end)
     {
         // fast path
@@ -849,7 +880,7 @@ struct GapBuffer
                       .take(end.to!long - start.to!long)
                       .byCodePoint.array.to!(BufferType);
     }
-    public @safe pragma(inline)
+    public const @safe pragma(inline)
     const(BufferType) opSlice(long start, long end)
     {
         return opSlice(start.GrpmIdx, end.GrpmIdx);
@@ -858,7 +889,7 @@ struct GapBuffer
     /**
      * index operator read: auto x = gapBuffer[]
      */
-    public @safe nothrow pragma(inline)
+    public const pure nothrow @safe pragma(inline)
     const(BufferType) opSlice()
     {
         return content;
