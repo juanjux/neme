@@ -324,6 +324,7 @@ debug
         // Deleting should recover space from the gap
         auto prevCurSize = gb.currentGapSize;
         gb.deleteRight(10.GrpmCount);
+        assert(gb._newLinesDirty);
 
         assert(gb.currentGapSize == prevCurSize + txt.firstGraphemesSize(10.GrpmCount));
         assert(gb.content.to!dstring == "abcde");
@@ -339,6 +340,7 @@ debug
     {
         auto gb = gapbuffer(txt);
         gb.deleteRight(5.GrpmCount);
+        assert(gb._newLinesDirty);
         assert(gb.contentGrpmLen == 0);
     }
 }
@@ -354,6 +356,7 @@ debug
         auto prevCurSize = gb.currentGapSize;
         gb.cursorForward(10.GrpmCount);
         gb.deleteLeft(10.GrpmCount);
+        assert(gb._newLinesDirty);
         assert(gb.currentGapSize == prevCurSize + txt.firstGraphemesSize(10.GrpmCount));
         assert(gb.content.to!string == "abc");
         assert(gb.reallocCount == 0);
@@ -460,6 +463,7 @@ debug
         assert(gb.reallocCount == 0);
         assert(gb.gapStart == prevGapStart + asArray(txt).length);
         assert(gb.gapEnd == prevGapEnd);
+        assert(gb._newLinesDirty);
     }
 }
 @safe unittest
@@ -480,6 +484,7 @@ debug
         assert(gb.content.to!string == txt);
         assert(gb.gapStart == prevGapStart + asArray(txt).length);
         assert(gb.gapEnd == prevGapEnd + asArray(txt).length);
+        assert(gb._newLinesDirty);
     }
 }
 
@@ -510,6 +515,7 @@ debug
         auto oldMinusTwo = gb[2.GrpmIdx..$];
         gb.deleteBetween(0.GrpmIdx, 2.GrpmIdx);
         assert(gb.content == oldMinusTwo);
+        assert(gb._newLinesDirty);
 
         gb = gapbuffer(txt, 10);
         auto oldMinutLastTwo = gb[0.GrpmIdx..8.GrpmIdx];
@@ -720,16 +726,80 @@ debug
 }
 
 // indexNewLines
+
 @safe unittest
 {
     auto gb = gapbuffer("012345678\n012\n", 10);
     gb.indexNewLines;
+    assert(gb._newLines.length == 2);
     assert(gb._newLines[0] == 9);
     assert(gb._newLines[1] == 13);
-    assert(gb._averageLineLen == 6);
+    assert(gb._averageLineLenCP == 7);
+    assert(!gb._newLinesDirty);
+}
+@safe unittest
+{
+    auto gb = gapbuffer("01234\n6789\n", 10);
+    gb.cursorForward(5.GrpmCount);
+    // \n just after gapEnd
+    gb.indexNewLines;
+    assert(gb._newLines.length == 2);
+    assert(gb._newLines[0] == 5);
+    assert(gb._newLines[1] == 10);
+    assert(gb._averageLineLenCP == 6);
+
+    gb.cursorForward(1.GrpmCount);
+    // \n just before gapStart
+    gb.indexNewLines;
+    assert(gb._newLines.length == 2);
+    assert(gb._newLines[0] == 5);
+    assert(gb._newLines[1] == 10);
+}
+@safe unittest
+{
+    auto gb = gapbuffer("01234\n\n789\n", 10);
+    // \n before and after gapStart
+    gb.cursorForward(6.GrpmCount);
+    gb.indexNewLines;
+    assert(gb._newLines.length == 3);
+    assert(gb._newLines[0] == 5);
+    assert(gb._newLines[1] == 6);
+    assert(gb._newLines[2] == 10);
+}
+@safe unittest
+{
+    auto gb = gapbuffer("\n", 10);
+    gb.indexNewLines;
+    assert(gb._newLines.length == 1);
+    assert(gb._newLines[0] == 0);
+    assert(gb._averageLineLenCP == 1);
+}
+@safe unittest
+{
+    auto gb = gapbuffer("\n\n", 10);
+    gb.indexNewLines;
+    assert(gb._newLines.length == 2);
+    assert(gb._newLines[0] == 0);
+    assert(gb._newLines[1] == 1);
+    assert(gb._averageLineLenCP == 1);
+}
+@safe unittest
+{
+    auto gb = gapbuffer("12345", 10);
+    gb.indexNewLines;
+    assert(gb._newLines.length == 0);
+    assert(gb._averageLineLenCP == 5);
+}
+@safe unittest
+{
+    auto gb = gapbuffer("", 10);
+    gb.indexNewLines;
+    assert(gb._newLines.length == 0);
+    assert(gb._averageLineLenCP == 0);
 }
 
-// currentLine
+// currentLine & lineAtPosition
+
 @safe unittest
 {
     string text =     "01\n34\n67\n90\n";
@@ -767,25 +837,4 @@ debug
         gb.cursorForward(1.GrpmCount); // pos = 11
         assert(gb.currentLine == 3);
     }
-}
-
-
-// General test
-
-@safe unittest
-{
-    string text   = "init with text ñáñáñá";
-    wstring wtext = "init with text ñáñáñá";
-    dstring dtext = "init with text ñáñáñá";
-    auto gb8 = gapbuffer(text);
-    auto gb16 = gapbuffer(wtext);
-    auto gb32 = gapbuffer(dtext);
-
-    assert(gb8.contentGrpmLen == gb32.contentGrpmLen);
-    assert(gb8.contentGrpmLen == gb16.contentGrpmLen);
-    assert(gb8.content == gb32.content);
-    assert(gb8.content == gb16.content);
-    assert(gb8.content.to!string.length == 27);
-    assert(gb8.content.to!wstring.length == 21);
-    assert(gb8.content.to!dstring.length == gb32.content.to!dstring.length);
 }

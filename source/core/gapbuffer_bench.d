@@ -225,20 +225,18 @@ private void benchProgrammingSessionCP(GBType)()
 
     TickDuration[1] duration = void;
 
-    // XXX redo with -O3 -mcpu=skylake
     // best benchmark done with dub run --compiler=ldc2 --build=release-nobounds --config=optimized
-
 
     /+
      ╔══════════════════════════════════════════════════════════════════════════════
      ║ ⚑ "Slow indexing" (compatible with Unicode multi CP graphemes)
      ╚══════════════════════════════════════════════════════════════════════════════
     +/
-    // 7.54 secs
+    // 8.86 secs
     duration = benchmark!editSessionSlow(iterations);
     writeln("Edit session, slow operations: ", to!Duration(duration[0]));
 
-    // 2.37 secs
+    // 2.80 secs
     preLoadedGapBuffer = GBType(code, gapsize);
     preLoadedGapBuffer.forceFastMode = false;
     duration = benchmark!(() => editSession(code, Yes.forceFastMode, No.doLoad)) (iterations);
@@ -249,11 +247,11 @@ private void benchProgrammingSessionCP(GBType)()
      ║ ⚑ "Fast indexing" (incompatible with Unicode multi CP graphemes)
      ╚══════════════════════════════════════════════════════════════════════════════
     +/
-    // 3 msecs
+    // 3.30 msecs
     duration = benchmark!(() => editSession(code, Yes.forceFastMode)) (iterations);
     writeln("Edit session, fast operations: ", to!Duration(duration[0]));
 
-    // 139 μs
+    // 0.167 msecs
     preLoadedGapBuffer = GBType(code, gapsize);
     preLoadedGapBuffer.forceFastMode = true;
     duration = benchmark!(() => editSession(code, Yes.forceFastMode, No.doLoad)) (iterations);
@@ -288,17 +286,17 @@ void benchReallocations()
 
     TickDuration[1] duration = void;
 
-    // 121 usecs
+    // 0.092 msecs
     duration = benchmark!smallReallocs(1);
     writeln(iterations, " small reallocations: ", to!Duration(duration[0]));
     GC.minimize();
 
-    // 85 msecs
+    // 0.092 msecs
     duration = benchmark!mediumReallocs(1);
     writeln(iterations, " medium reallocations: ", to!Duration(duration[0]));
     GC.minimize();
 
-    // 8.97 msecs
+    // 9.46 msecs
     duration = benchmark!bigReallocs(1);
     writeln(iterations, " big reallocations: ", to!Duration(duration[0]));
     GC.minimize();
@@ -344,6 +342,8 @@ private void benchCurrentLine()
 }
 }
 
+version(none)
+{
 private void benchCurrentLineSerialVsParallel()
 {
     // TODO: test also the fast path and a small file
@@ -375,15 +375,16 @@ private void benchCurrentLineSerialVsParallel()
     duration = benchmark!(() => gb2.indexNewLinesParallel)(iterations);
     writeln("single parallel big: ", to!Duration(duration[0]));
 }
+}
 
 void bench()
 {
-    //auto g = gapbuffer;
-    //writeln("Programming sessions: ");
-    //benchProgrammingSessionCP!GapBuffer;
-    //writeln("Reallocations: ");
-    //benchReallocations;
-    benchCurrentLineSerialVsParallel;
+    auto g = gapbuffer;
+    writeln("Programming sessions: ");
+    benchProgrammingSessionCP!GapBuffer;
+    writeln("\nReallocations: ");
+    benchReallocations;
+    //benchCurrentLineSerialVsParallel;
     //benchCurrentLine;
 
     //uint iterations = 10_000_000;

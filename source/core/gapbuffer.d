@@ -1,7 +1,9 @@
 module neme.core.gapbuffer;
 
 // TODO: move these to local imports when only used once
+import core.memory: GC;
 import std.algorithm.comparison : max, min;
+import std.algorithm.searching: canFind;
 import std.algorithm: copy, count;
 import std.array : appender, insertInPlace, join, minimallyInitializedArray;
 import std.container.array : Array;
@@ -14,7 +16,6 @@ import std.traits;
 import std.typecons: Typedef, Flag, Yes, No;
 import std.uni: byCodePoint, byGrapheme;
 import std.utf: byDchar;
-import core.memory: GC;
 
 /**
  IMPORTANT terminology in this module:
@@ -35,7 +36,7 @@ import core.memory: GC;
  (currently no check is done when deleting characters for performance reasons).
 */
 
-// TODO: paralellize indexNewLines for big files
+// TODO: scope all the things
 
 // TODO: update the line number cache on modify, check if it has to be done also
 // for move
@@ -148,14 +149,17 @@ struct GapBuffer
     // number and the value is an array with the newline offset
     package ArrayIdx[ArrayIdx] _newLines;
 
-    // Average line length in the file. Used to optimie currentLine. Updated
-    // on indexNewLines()
-    package ulong _averageLineLen = 90;
+    // Marks if line number cache is dirty (text modifed without calling indexNewLines)
+    package bool _newLinesDirty = true;
+
+    // Average line length in the file, in code points, including the newline character.
+    // Used to optimize currentLine. Updated on indexNewLines(buffer)
+    package ArraySize _averageLineLenCP = 90;
 
     package const pure nothrow @safe @nogc pragma(inline)
     bool insideGap(ArrayIdx pos)
     {
-        return (pos >= gapStart && pos <= gapEnd);
+        return (pos >= gapStart && pos < gapEnd);
     }
 
     public @property @safe const pragma(inline)
@@ -202,8 +206,8 @@ struct GapBuffer
         // Only a small text: only do the check if we didn't
         // had combined chars before (to avoid setting it to "false"
         // when it already had combined chars but the new text doesn't)
+
         if (!forceFastMode && (forceCheck || !hasCombiningGraphemes)) {
-            long idx = 0;
             foreach(gpm; text.byGrapheme) {
                 // Short circuit the loop as soon as a multi CP grapheme is found
                 if (gpm.length > 1) {
@@ -294,11 +298,13 @@ struct GapBuffer
             write(" ");
         }
         write("^");
-        foreach (_; buffer[gapStart .. gapEnd - 2].byGrapheme)
-        {
-            write("#");
+        if (gapEnd - 2 > gapStart) {
+            foreach (_; buffer[gapStart .. gapEnd - 2].byGrapheme)
+            {
+                write("#");
+            }
+            write("^");
         }
-        write("^");
         writeln;
     }
 
@@ -370,14 +376,24 @@ struct GapBuffer
         _configuredGapSize = newSize;
 
         // If the newSize if bigger than the current gap, reallocate
-        if (newSize > (gapEnd - gapStart)) {
+        if (newSize > currentGapSize) {
             reallocate();
         }
     }
+
+    /// Return the number of code points. This number can be
+    /// different / from the number of graphemes (visual characters) elements
+    /// if the text contain multi-cp graphemes.
+    public const pure nothrow @property @safe pragma(inline)
+    ArraySize contentCPLen()
+    {
+        return buffer.length - currentGapSize;
+    }
+
     /// Return the number of visual chars (graphemes). This number can be
     /// different / from the number of chartype elements or even unicode code
     /// points.
-    public const @property @safe pragma(inline)
+    public const pure @property @safe pragma(inline)
     GrpmCount contentGrpmLen()
     {
         return GrpmCount(contentBeforeGapGrpmLen + contentAfterGapGrpmLen);
@@ -513,9 +529,11 @@ struct GapBuffer
         ImArrayIdx idxDiff = idxDiffUntilGrapheme(gapStart, actualToDelGrpm,
                 Direction.Back);
 
+        auto oldGapStart = gapStart;
         gapStart = max(gapStart - idxDiff, 0);
-
         contentBeforeGapGrpmLen -= actualToDelGrpm.to!long;
+        _newLinesDirty = true;
+
         return cursorPos;
     }
 
@@ -540,9 +558,11 @@ struct GapBuffer
         ImGrpmCount actualToDelGrpm = min(count, contentAfterGapGrpmLen);
         ImArrayIdx idxDiff = idxDiffUntilGrapheme(gapEnd, actualToDelGrpm,
                 Direction.Front);
-        gapEnd = min(gapEnd + idxDiff, buffer.length);
 
+        auto oldGapEnd = gapEnd;
+        gapEnd = min(gapEnd + idxDiff, buffer.length);
         contentAfterGapGrpmLen -= actualToDelGrpm.to!long;
+        _newLinesDirty = true;
 
         return cursorPos;
     }
@@ -577,9 +597,16 @@ struct GapBuffer
     out(res) { assert(res >= 0); }
     body
     {
+        if (text.length == 0)
+            return cursorPos;
+
+        bool reallocated = false;
+        auto oldGapStart = gapStart;
+
         if (text.length >= currentGapSize) {
             // doesnt fill in the gap, reallocate the buffer adding the text
             reallocate(text);
+            reallocated = true;
         } else {
             checkCombinedGraphemes(text);
             ImArrayIdx newGapStart = gapStart + text.length;
@@ -587,8 +614,8 @@ struct GapBuffer
             gapStart = newGapStart;
         }
 
-        // fast path
         GrpmIdx graphemesAdded;
+        // fast path
         if (_forceFastMode || !hasCombiningGraphemes) {
             graphemesAdded = text.length;
         } else {
@@ -596,6 +623,8 @@ struct GapBuffer
         }
 
         contentBeforeGapGrpmLen += graphemesAdded.to!long;
+        _newLinesDirty = true;
+
         return cursorPos;
     }
 
@@ -674,6 +703,8 @@ struct GapBuffer
 
         checkCombinedGraphemes();
         updateGrpmLens();
+        indexNewLines();
+
         return cursorPos;
     }
     public @safe
@@ -721,6 +752,7 @@ struct GapBuffer
 
         checkCombinedGraphemes();
         updateGrpmLens();
+        indexNewLines();
     }
     package @safe pragma(inline)
     void reallocate()
@@ -739,71 +771,87 @@ struct GapBuffer
     // the same speed and from there it was faster; could be recovered if in the future I add a
     // "big file mode".
 
-    // TODO: add unittests with \n in the gap, just before gapStart and just after gapEnd
     // TODO: fuzzy test
-    public nothrow pure @trusted
+    public @trusted @property
     void indexNewLines()
     {
-        ulong nlIndex;
+        if (!_newLinesDirty)
+            return _newLines;
+
+        scope(success)
+            _newLinesDirty = false;
+
+        ArrayIdx nlIndex;
         // For calculating the average lenth, used to optimize currentLine():
-        ulong linesLengthSum;
-        ulong prevOffset;
+        ArraySize linesLengthSum;
+        ArrayIdx prevOffset;
         bool afterGap = false;
-        _newLines.clear();
+        ArrayIdx[ArrayIdx] partialLines;
 
         foreach(ref offset, cp; buffer) {
             if (insideGap(offset)) {
                 // ignore the gap
-                offset = gapEnd;
+                offset = gapEnd - 1;
                 continue;
             }
 
-            if(!afterGap && offset > gapEnd)
+            if(!afterGap && offset >= gapEnd)
                 afterGap = true;
 
             // offset without the gap (by-content):
-            ulong vOffset = offset;
+            ArrayIdx noGapOffset = offset;
 
             if (cp == '\n') {
-                if (afterGap)
-                    vOffset -= currentGapSize;
+                if (afterGap) {
+                    noGapOffset = offset - currentGapSize;
+                }
 
                 // Store in the map [newLine#] : newlineOffset
-                _newLines[nlIndex] = vOffset;
+                partialLines[nlIndex] = noGapOffset;
                 ++nlIndex;
 
                 // Add the current line length (numchars from the prevOffset to this \n)
-                linesLengthSum += vOffset - prevOffset;
-                prevOffset = vOffset;
+                linesLengthSum += noGapOffset - prevOffset + 1;
+                prevOffset = noGapOffset;
             }
         }
-        _averageLineLen = linesLengthSum / nlIndex;
+
+        if (partialLines.length > 0)
+            _averageLineLenCP = linesLengthSum / nlIndex;
+        else
+            _averageLineLenCP = contentCPLen;
+
+        _newLines = partialLines;
     }
 
     // TODO: fuzzy test this
     /**
-     * Returns the current line inside the buffer (0-based index)
+     * Returns the current line inside the buffer (0-based index).
      */
-    public pure nothrow const @safe @property
-    ArrayIdx currentLine()
+    public @safe
+    ArrayIdx lineAtPosition(ArrayIdx pos)
     {
-        auto pos = gapStart;
-        auto aprox = min(_newLines.length - 1, (pos / _averageLineLen) - 1);
+        if (_newLinesDirty)
+            indexNewLines();
+
+        if (_newLines.length < 2 || _averageLineLenCP == 0)
+            return 0;
+
+        ArrayIdx aprox = min(_newLines.length - 1, pos / _averageLineLenCP);
 
         while (true) {
             if (aprox >_newLines.length || aprox < 0) {
                 return aprox;
             }
 
-            auto maybeNewLine = _newLines[aprox];
-
-            if (maybeNewLine == pos) {
+            auto guessNewlinePos = _newLines[aprox];
+            if (guessNewlinePos == pos) {
                 // Lucky shot
                 return aprox;
             }
 
-            if (maybeNewLine > pos) {
-                // Before
+            if (guessNewlinePos > pos) {
+                // Current position if after the guessed newline
 
                 if (aprox == 0)
                     // and it was the first, so found
@@ -818,11 +866,11 @@ struct GapBuffer
                 --aprox;
             }
 
-            else if (maybeNewLine < pos) {
-                // After
+            else if (guessNewlinePos < pos) {
+                // Current position is before the guessed newline
 
                 // Check the position of the next newline to see if our pos is between them
-                if (_newLines[aprox + 1] > pos) {
+                if (aprox + 1 == _newLines.length || _newLines[aprox + 1] > pos) {
                     return aprox + 1;
                 }
 
@@ -833,6 +881,11 @@ struct GapBuffer
                 assert(false, "Bug in currentLine");
             }
         }
+    }
+    public @safe @property
+    ArrayIdx currentLine()
+    {
+        return lineAtPosition(gapStart);
     }
 
     /+
@@ -845,6 +898,10 @@ struct GapBuffer
      * $ (length) operator
      */
     public alias opDollar = contentGrpmLen;
+
+    /**
+     * [] (slice) operator, currently only supported as rvalue
+     */
 
     /// OpIndex: BufferType b = gapbuffer[3];
     /// Please note that this returns a BufferType and NOT a single
