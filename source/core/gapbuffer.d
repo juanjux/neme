@@ -776,7 +776,7 @@ struct GapBuffer
     void indexNewLines()
     {
         if (!_newLinesDirty)
-            return _newLines;
+            return;
 
         scope(success)
             _newLinesDirty = false;
@@ -786,7 +786,6 @@ struct GapBuffer
         ArraySize linesLengthSum;
         ArrayIdx prevOffset;
         bool afterGap = false;
-        ArrayIdx[ArrayIdx] partialLines;
 
         foreach(ref offset, cp; buffer) {
             if (insideGap(offset)) {
@@ -807,7 +806,7 @@ struct GapBuffer
                 }
 
                 // Store in the map [newLine#] : newlineOffset
-                partialLines[nlIndex] = noGapOffset;
+                _newLines[nlIndex] = noGapOffset;
                 ++nlIndex;
 
                 // Add the current line length (numchars from the prevOffset to this \n)
@@ -816,12 +815,7 @@ struct GapBuffer
             }
         }
 
-        if (partialLines.length > 0)
-            _averageLineLenCP = linesLengthSum / nlIndex;
-        else
-            _averageLineLenCP = contentCPLen;
-
-        _newLines = partialLines;
+        _averageLineLenCP = _newLines.length > 0 ? linesLengthSum / nlIndex : contentCPLen;
     }
 
     // TODO: fuzzy test this
@@ -861,8 +855,7 @@ struct GapBuffer
                 if (_newLines[aprox - 1] < pos) {
                     return aprox;
                 }
-
-                // Not, found continue searching back
+                // Not found, continue searching back
                 --aprox;
             }
 
@@ -873,7 +866,6 @@ struct GapBuffer
                 if (aprox + 1 == _newLines.length || _newLines[aprox + 1] > pos) {
                     return aprox + 1;
                 }
-
                 // Not found, continue searching front
                 ++aprox;
             }
