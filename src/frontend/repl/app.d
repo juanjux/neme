@@ -26,7 +26,7 @@ import neme.core.gapbuffer: gapbuffer, GapBuffer;
  */
 
 
-void printBuffer(const ref GapBuffer gb)
+void printBuffer(ref GapBuffer gb)
 {
     import std.string: splitLines, leftJustify;
     import std.format;
@@ -66,7 +66,7 @@ Command parseLine(string line)
     }
 
     if (tmpParams.length > 1) {
-        tmpParams = to!(string[])(tmpParams[1..$]);
+        tmpParams = to!(string[])(tmpParams[0..$]);
 
         if (indexOf(tmpParams[$-1], ' ') != -1) {
             auto subtokens = tmpParams[$-1].split(" ");
@@ -81,30 +81,41 @@ Command parseLine(string line)
     return c;
 }
 
+
 void error(Command command)
 {
     writeln("Unkown command: ", command.cmd);
 }
 
+
 void printLines(GapBuffer gb, Command command)
 {
-    // XXX
+    long[] numlines;
+
+    foreach(ref i; command.params) {
+        writeln(gb.line(i.to!long));
+    }
+
 }
+
 
 void deleteLines(GapBuffer gb, Command command)
 {
     // XXX
 }
 
+
 void addText(GapBuffer gb, Command command)
 {
     // XXX
 }
 
+
 void deleteText(GapBuffer bb, Command command)
 {
     // XXX
 }
+
 
 int main(string[] args)
 {
@@ -123,10 +134,8 @@ int main(string[] args)
     foreach(line; stdin.byLine()) {
         auto command = parseLine(line.to!string);
 
-        //writeln("XXX cmd: ", command.cmd);
-        //writeln("XXX params: ", command.params);
-        //writeln("XXX text: ", command.textParam);
-
+        writeln(command);
+        // XXX strip command
         switch(command.cmd)
         {
         case "p":
@@ -134,7 +143,7 @@ int main(string[] args)
             printBuffer(gb);
             break;
         case "pl":
-        case "printlines":
+        case "printLines":
             printLines(gb, command);
             break;
         case "dl":
@@ -149,6 +158,10 @@ int main(string[] args)
         case "deleteText":
             deleteText(gb, command);
             break;
+        case "q":
+        case "quit":
+            writeln("Bye!");
+            return 0;
         default:
             error(command);
             break;

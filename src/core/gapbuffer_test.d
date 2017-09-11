@@ -838,3 +838,45 @@ debug
         assert(gb.currentLine == 3);
     }
 }
+
+// line & numLines
+@safe unittest
+{
+
+    string text     = "01\n34\n\n";
+    string combtext = "01\n34\n\nr̈a⃑⊥ b⃑\n";
+    string nonl     = "abc";
+
+    auto gb = gapbuffer(text, 10);
+    auto cgb = gapbuffer(combtext, 10);
+    auto ngb = gapbuffer(nonl, 10);
+
+    assert(gb.numLines == 3);
+    assert(cgb.numLines == 4);
+    assert(ngb.numLines == 0);
+
+    assert(gb.line(-3) == "");
+    assert(gb.line(0) == "");
+    assert(gb.line(99999) == "");
+
+    assert(cgb.line(-3) == "");
+    assert(cgb.line(0) == "");
+    assert(cgb.line(99999) == "");
+
+    assert(ngb.line(-3) == "");
+    assert(ngb.line(0) == "");
+    assert(ngb.line(99999) == "");
+
+    assert(gb.line(1) == "01");
+    assert(cgb.line(1) == "01");
+
+    assert(gb.line(2) == "34");
+    assert(cgb.line(2) == "34");
+
+    assert(gb.line(3) == "");
+    assert(cgb.line(3) == "");
+
+    assert(cgb.line(4) == "r̈a⃑⊥ b⃑");
+}
+
+// XXX test _contentCacheDirty
