@@ -294,6 +294,20 @@ debug
     assert(gb.contentAfterGap == " mundo en España!");
 }
 
+// contentGrpmLen
+
+@safe unittest
+{
+    dstring text = "Some initial text";
+    dstring combtext = "r̈a⃑⊥ b⃑67890";
+
+    auto gb = gapbuffer(text, 50);
+    auto cgb = gapbuffer(combtext, 50);
+
+    assert(gb.contentGrpmLen == 17);
+    assert(cgb.contentGrpmLen == 10);
+}
+
 // currentGapSize / configuredGapSize
 
 @safe unittest
@@ -879,4 +893,44 @@ debug
     assert(cgb.line(4) == "r̈a⃑⊥ b⃑");
 }
 
-// XXX test _contentCacheDirty
+// cursorToLine
+@safe unittest
+{
+    string text     = "01\n34\n\n";
+    string combtext = "01\n34\n\nr̈a⃑⊥ b⃑\n";
+    string nonl     = "abc";
+
+    auto gb = gapbuffer(text, 10);
+    auto cgb = gapbuffer(combtext, 10);
+    auto ngb = gapbuffer(nonl, 10);
+
+    ngb.cursorToLine(0);
+    assert(ngb.cursorPos == 1);
+    ngb.cursorToLine(10);
+    assert(ngb.cursorPos == 3);
+
+    gb.cursorToLine(0);
+    assert(gb.cursorPos == 1);
+    gb.cursorToLine(10);
+    assert(gb.cursorPos == 7);
+
+    gb.cursorToLine(1);
+    assert(gb.cursorPos == 1);
+
+    gb.cursorToLine(2);
+    assert(gb.cursorPos == 4);
+
+    gb.cursorToLine(3);
+    assert(gb.cursorPos == 7);
+
+    cgb.cursorToLine(4);
+    assert(cgb.cursorPos == 8);
+
+    cgb.cursorToLine(5);
+    assert(cgb.cursorPos == 13);
+
+    cgb.cursorToLine(100);
+    assert(cgb.cursorPos == 13);
+}
+
+// XXX test deleteLine

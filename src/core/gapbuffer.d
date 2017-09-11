@@ -36,6 +36,8 @@ import std.utf: byDchar;
  (currently no check is done when deleting characters for performance reasons).
 */
 
+// TODO: deleteLine
+
 // TODO: scope all the things
 
 // TODO: add a demo mode (you type but the buffer representation is shown in
@@ -856,6 +858,40 @@ struct GapBuffer
         }
 
         return content[_newLines[linenum - 2] + 1.._newLines[linenum - 1]];
+    }
+
+    /// Move the cursor to the start of the specified line
+    public @safe
+    GrpmIdx cursorToLine(ArrayIdx linenum)
+    {
+        indexNewLines();
+
+        if (linenum <= 1) {
+            cursorPos(1.GrpmIdx);
+        }
+
+        else if (linenum >= _newLines.length + 1) {
+            cursorPos(contentGrpmLen);
+        }
+
+        else {
+            // Line 2 = Last position of first line (_newLines[0]) + 2 (one char to the
+            // left and +1 because is 0-based but we return a 1-based pos).
+            cursorPos((_newLines[linenum - 2] + 2).GrpmIdx);
+        }
+        return cursorPos;
+    }
+
+    /// Delete the specified line
+    public @safe
+    void deleteLine(ArrayIdx linenum)
+    {
+        indexNewLines();
+        GrpmIdx endPos;
+
+        cursorToLine(linenum);
+
+        // XXX finish
     }
 
     // TODO: fuzzy test this
