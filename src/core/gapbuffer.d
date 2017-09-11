@@ -32,14 +32,13 @@ import std.utf: byDchar;
 
  Some functions have a "fast path" that operate by chars and a "slow path" that
  operate by graphemes. The path is selected by the hasCombiningGraphemes member that
- is updated every time text is added to the buffer to the array is reallocated
+ is updated every time text is added to the buffer or the array is reallocated
  (currently no check is done when deleting characters for performance reasons).
 */
 
-// TODO: scope all the things
+// TODO: deleteLine
 
-// TODO: update the line number cache on modify, check if it has to be done also
-// for move
+// TODO: scope all the things
 
 // TODO: add a demo mode (you type but the buffer representation is shown in
 //       real time as you type or move the cursor)
@@ -115,6 +114,8 @@ struct GapBuffer
 {
     // The internal buffer holding the text and the gap
     package BufferType buffer = null;
+    // A cache to avoid creating a new array on every content() call when unmodified
+    package BufferType _contentCache = null;
 
     /// Counter of reallocations done since the struct was created to make room for
     /// text bigger than currentGapSize().
@@ -151,6 +152,9 @@ struct GapBuffer
 
     // Marks if line number cache is dirty (text modifed without calling indexNewLines)
     package bool _newLinesDirty = true;
+
+    // Marks if the content cache is dirty (text modified in any way)
+    package bool _contentCacheDirty = true;
 
     // Average line length in the file, in code points, including the newline character.
     // Used to optimize currentLine. Updated on indexNewLines(buffer)
@@ -226,7 +230,7 @@ struct GapBuffer
     }
 
 
-    // Returns the number of graphemes in the text.
+    /// Returns the number of graphemes in the text.
     public const @safe pragma(inline) inout
     inout(GrpmCount) countGraphemes(const BufferType  slice)
     {
@@ -337,10 +341,15 @@ struct GapBuffer
      *
      * Returns: The content of the buffer, as BufferElement.
      */
-    public const pure nothrow @property @safe pragma(inline)
+    public pure nothrow @property @safe pragma(inline)
     const(BufferType) content()
     {
-        return contentBeforeGap ~ contentAfterGap;
+        if (!_contentCacheDirty)
+            return _contentCache;
+
+        _contentCache = (contentBeforeGap ~ contentAfterGap).to!BufferType;
+        _contentCacheDirty = true;
+        return _contentCache;
     }
 
     // Current gap size. The returned size is the number of chartype elements
@@ -532,7 +541,9 @@ struct GapBuffer
         auto oldGapStart = gapStart;
         gapStart = max(gapStart - idxDiff, 0);
         contentBeforeGapGrpmLen -= actualToDelGrpm.to!long;
+
         _newLinesDirty = true;
+        _contentCacheDirty = true;
 
         return cursorPos;
     }
@@ -562,7 +573,9 @@ struct GapBuffer
         auto oldGapEnd = gapEnd;
         gapEnd = min(gapEnd + idxDiff, buffer.length);
         contentAfterGapGrpmLen -= actualToDelGrpm.to!long;
+
         _newLinesDirty = true;
+        _contentCacheDirty = true;
 
         return cursorPos;
     }
@@ -582,6 +595,9 @@ struct GapBuffer
 
         cursorPos = start;
         deleteRight(GrpmCount(end - start));
+
+        _newLinesDirty = true;
+        _contentCacheDirty = true;
 
         return cursorPos;
     }
@@ -623,7 +639,9 @@ struct GapBuffer
         }
 
         contentBeforeGapGrpmLen += graphemesAdded.to!long;
+
         _newLinesDirty = true;
+        _contentCacheDirty = true;
 
         return cursorPos;
     }
@@ -704,6 +722,7 @@ struct GapBuffer
         checkCombinedGraphemes();
         updateGrpmLens();
         indexNewLines();
+        _contentCacheDirty = true;
 
         return cursorPos;
     }
@@ -772,7 +791,7 @@ struct GapBuffer
     // "big file mode".
 
     // TODO: fuzzy test
-    public @trusted @property
+    public @trusted
     void indexNewLines()
     {
         if (!_newLinesDirty)
@@ -782,7 +801,7 @@ struct GapBuffer
             _newLinesDirty = false;
 
         ArrayIdx nlIndex;
-        // For calculating the average lenth, used to optimize currentLine():
+        // For calculating the average line length, to optimize currentLine():
         ArraySize linesLengthSum;
         ArrayIdx prevOffset;
         bool afterGap = false;
@@ -818,6 +837,63 @@ struct GapBuffer
         _averageLineLenCP = _newLines.length > 0 ? linesLengthSum / nlIndex : contentCPLen;
     }
 
+    public @safe @property
+    ArrayIdx numLines()
+    {
+        return _newLines.length;
+    }
+
+    /// Return the indicated line number text. It doesn't move the cursor.
+    public @safe
+    const(BufferType) line(ArrayIdx linenum)
+    {
+        indexNewLines();
+
+        if (linenum < 1 || linenum >= _newLines.length + 1) {
+            return "";
+        }
+
+        else if (linenum == 1) {
+            return content[0.._newLines[0]];
+        }
+
+        return content[_newLines[linenum - 2] + 1.._newLines[linenum - 1]];
+    }
+
+    /// Move the cursor to the start of the specified line
+    public @safe
+    GrpmIdx cursorToLine(ArrayIdx linenum)
+    {
+        indexNewLines();
+
+        if (linenum <= 1) {
+            cursorPos(1.GrpmIdx);
+        }
+
+        else if (linenum >= _newLines.length + 1) {
+            cursorPos(contentGrpmLen);
+        }
+
+        else {
+            // Line 2 = Last position of first line (_newLines[0]) + 2 (one char to the
+            // left and +1 because is 0-based but we return a 1-based pos).
+            cursorPos((_newLines[linenum - 2] + 2).GrpmIdx);
+        }
+        return cursorPos;
+    }
+
+    /// Delete the specified line
+    public @safe
+    void deleteLine(ArrayIdx linenum)
+    {
+        indexNewLines();
+        GrpmIdx endPos;
+
+        cursorToLine(linenum);
+
+        // XXX finish
+    }
+
     // TODO: fuzzy test this
     /**
      * Returns the current line inside the buffer (0-based index).
@@ -825,8 +901,7 @@ struct GapBuffer
     public @safe
     ArrayIdx lineAtPosition(ArrayIdx pos)
     {
-        if (_newLinesDirty)
-            indexNewLines();
+        indexNewLines();
 
         if (_newLines.length < 2 || _averageLineLenCP == 0)
             return 0;
@@ -845,7 +920,7 @@ struct GapBuffer
             }
 
             if (guessNewlinePos > pos) {
-                // Current position if after the guessed newline
+                // Current position is after the guessed newline
 
                 if (aprox == 0)
                     // and it was the first, so found
@@ -898,7 +973,7 @@ struct GapBuffer
     /// OpIndex: BufferType b = gapbuffer[3];
     /// Please note that this returns a BufferType and NOT a single
     /// BufferElement because the returned character could take several code points/units.
-    public const @safe pragma(inline)
+    public @safe pragma(inline)
     const(BufferType) opIndex(GrpmIdx pos)
     {
         // fast path
@@ -916,7 +991,7 @@ struct GapBuffer
     /**
      * index operator read: auto x = gapBuffer[0..3]
      */
-    public const @safe pragma(inline)
+    public @safe pragma(inline)
     const(BufferType) opSlice(GrpmIdx start, GrpmIdx end)
     {
         // fast path
@@ -929,7 +1004,7 @@ struct GapBuffer
                       .take(end.to!long - start.to!long)
                       .byCodePoint.array.to!(BufferType);
     }
-    public const @safe pragma(inline)
+    public @safe pragma(inline)
     const(BufferType) opSlice(long start, long end)
     {
         return opSlice(start.GrpmIdx, end.GrpmIdx);
@@ -938,7 +1013,7 @@ struct GapBuffer
     /**
      * index operator read: auto x = gapBuffer[]
      */
-    public const pure nothrow @safe pragma(inline)
+    public pure nothrow @safe pragma(inline)
     const(BufferType) opSlice()
     {
         return content;
