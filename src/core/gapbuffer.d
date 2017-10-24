@@ -2,9 +2,9 @@ module neme.core.gapbuffer;
 
 // TODO: move these to local imports when only used once
 import core.memory: GC;
+import std.algorithm: uniq, each, sort, filter, each, copy, count;
 import std.algorithm.comparison : max, min;
 import std.algorithm.searching: canFind;
-import std.algorithm: copy, count;
 import std.array : appender, insertInPlace, join, minimallyInitializedArray;
 import std.container.array : Array;
 import std.conv;
@@ -16,6 +16,8 @@ import std.traits;
 import std.typecons: Typedef, Flag, Yes, No;
 import std.uni: byCodePoint, byGrapheme;
 import std.utf: byDchar;
+
+// Cursor positions are 0-based. Lines are 1-based.
 
 /**
  IMPORTANT terminology in this module:
@@ -35,8 +37,6 @@ import std.utf: byDchar;
  is updated every time text is added to the buffer or the array is reallocated
  (currently no check is done when deleting characters for performance reasons).
 */
-
-// TODO: deleteLine
 
 // TODO: scope all the things
 
@@ -60,9 +60,8 @@ alias BufferElement = dchar;
 alias BufferType    = BufferElement[];
 
 // For array positions / sizes. Using signed long to be able to detect negatives.
-alias ArrayIdx   = long;
-alias ImArrayIdx = immutable long;
-
+alias ArrayIdx    = long;
+alias ImArrayIdx  = immutable long;
 alias ArraySize   = long;
 alias ImArraySize = immutable long;
 
@@ -550,9 +549,9 @@ struct GapBuffer
 
     // Note: ditto.
     /**
-      * Delete count chars to the right of the cursor position, moving the end of the gap to the right,
-      * keeping the cursor at the same position
-      *  (typically the effect of the del key).
+      * Delete count chars to the right of the cursor position, moving the end of the gap
+      * to the right, keeping the cursor at the same position (typically the effect of the
+      * del key).
       *
       * Params:
       *     count = the number of chars to delete.
@@ -785,6 +784,11 @@ struct GapBuffer
         reallocate(asArray(textToAdd));
     }
 
+    /+
+     ╔══════════════════════════════════════════════════════════════════════════════
+     ║ ⚑ By Line information / operations
+     ╚══════════════════════════════════════════════════════════════════════════════
+    +/
     // Implementation note: in exploratory/ there is a parallel (and uglier) version of this but for
     // normal files it was 25x slower than this serial version. For 100MB files it was about
     // the same speed and from there it was faster; could be recovered if in the future I add a
@@ -834,13 +838,25 @@ struct GapBuffer
             }
         }
 
-        _averageLineLenCP = _newLines.length > 0 ? linesLengthSum / nlIndex : contentCPLen;
+        if (nlIndex == 0) {
+            _averageLineLenCP = content.length;
+        } else {
+            _averageLineLenCP = numLines > 0 ? linesLengthSum / nlIndex : contentCPLen;
+        }
     }
 
     public @safe @property
     ArrayIdx numLines()
     {
-        return _newLines.length;
+        if (content.length == 0) {
+            return 0.ArrayIdx;
+        }
+
+        if (content[$-1] == '\n') {
+            return _newLines.length;
+        }
+
+        return _newLines.length + 1;
     }
 
     /// Return the indicated line number text. It doesn't move the cursor.
@@ -849,10 +865,12 @@ struct GapBuffer
     {
         indexNewLines();
 
-        if (linenum < 1 || linenum >= _newLines.length + 1) {
+        if (linenum < 1 || linenum > numLines) {
             return "";
         }
-
+        else if (_newLines.length == 0) {
+            return content;
+        }
         else if (linenum == 1) {
             return content[0.._newLines[0]];
         }
@@ -860,25 +878,61 @@ struct GapBuffer
         return content[_newLines[linenum - 2] + 1.._newLines[linenum - 1]];
     }
 
-    /// Move the cursor to the start of the specified line
+    /// Get the start position of the specified line
     public @safe
-    GrpmIdx cursorToLine(ArrayIdx linenum)
+    GrpmIdx lineStartPos(ArrayIdx linenum)
     {
         indexNewLines();
 
-        if (linenum <= 1) {
-            cursorPos(1.GrpmIdx);
+        if (linenum <= 1 || !content.length || !numLines || !_newLines.length) {
+            return 0.GrpmIdx;
         }
 
-        else if (linenum >= _newLines.length + 1) {
-            cursorPos(contentGrpmLen);
+        ArrayIdx newLineIdx = linenum - 1;
+
+        if (newLineIdx >= _newLines.length) {
+
+            ArrayIdx lastNewLine;
+            if (_newLines.length == 0) {
+                return 1.GrpmIdx;
+            }
+            else if (content[$-1] == '\n') {
+                lastNewLine = _newLines.length - 2;
+            }
+            else {
+                lastNewLine = _newLines.length - 1;
+            }
+
+            return (_newLines[lastNewLine] + 1).GrpmIdx;
         }
 
-        else {
-            // Line 2 = Last position of first line (_newLines[0]) + 2 (one char to the
-            // left and +1 because is 0-based but we return a 1-based pos).
-            cursorPos((_newLines[linenum - 2] + 2).GrpmIdx);
+        return (_newLines[newLineIdx - 1] + 1).GrpmIdx;
+    }
+
+    /// Get the end position of the specified line
+    public @safe
+    GrpmIdx lineEndPos(ArrayIdx linenum)
+    {
+        indexNewLines();
+
+        if (linenum < 1 || !content.length || !numLines) {
+            return 0.GrpmIdx;
         }
+
+        if (_newLines.length <= linenum) {
+            // last line
+            return (contentGrpmLen - 1).GrpmIdx;
+        }
+
+        // Next line position minus one
+        return (lineStartPos(linenum + 1) - 1).GrpmIdx;
+    }
+
+    /// Move the cursor to the start of the specified line
+    public @safe pragma(inline)
+    GrpmIdx cursorToLine(ArrayIdx linenum)
+    {
+        cursorPos(lineStartPos(linenum));
         return cursorPos;
     }
 
@@ -887,11 +941,36 @@ struct GapBuffer
     void deleteLine(ArrayIdx linenum)
     {
         indexNewLines();
-        GrpmIdx endPos;
 
-        cursorToLine(linenum);
+        // Single line, delete all
+        if (linenum == 1 && _newLines.length == 0) {
+            cursorPos(0.GrpmIdx);
+            deleteRight(contentGrpmLen);
+            return;
+        }
 
-        // XXX finish
+        // Nonsensical line
+        if (linenum < 1 || linenum > _newLines.length + 1) {
+            return;
+        }
+
+        auto delStart = lineStartPos(linenum);
+        auto delEnd = (lineEndPos(linenum) + 1).GrpmIdx;
+        deleteBetween(delStart, delEnd);
+    }
+
+    /// Delete the specified lines
+    public @safe
+    void deleteLines(ArrayIdx[] linenums)
+    {
+        auto deleted = 0;
+        auto deleteDecr = (ArrayIdx x) { deleteLine(x - deleted); ++deleted; };
+
+        linenums
+            .sort
+            .uniq
+            .filter!(a => a <= numLines && a > 0)
+            .each!(deleteDecr);
     }
 
     // TODO: fuzzy test this
@@ -949,6 +1028,7 @@ struct GapBuffer
             }
         }
     }
+
     public @safe @property
     ArrayIdx currentLine()
     {

@@ -1,8 +1,12 @@
 module neme.frontend.repl.app;
 
+import neme.core.gapbuffer: gapbuffer, GapBuffer, ArrayIdx;
+import std.array: array;
+
 import std.stdio;
 import std.conv: to;
-import neme.core.gapbuffer: gapbuffer, GapBuffer;
+import std.algorithm.iteration: map, each;
+
 
 // Simple sed-like (but dumber) REPL interface. For benchmarks and integration tests.
 
@@ -53,7 +57,7 @@ Command parseLine(string line)
     import std.array: split, join;
     import std.string: indexOf;
 
-    // Cmd format: cmd[,param1,param2] [text]
+    // Cmd format: cmd[param1,param2] [text]
     // Param1 is usually the line number or the start of a range
     Command c;
     string[] tmpParams;
@@ -90,18 +94,13 @@ void error(Command command)
 
 void printLines(GapBuffer gb, Command command)
 {
-    long[] numlines;
-
-    foreach(ref i; command.params) {
-        writeln(gb.line(i.to!long));
-    }
-
+    command.params.each!(a => writeln(gb.line(a.to!long)));
 }
-
 
 void deleteLines(GapBuffer gb, Command command)
 {
-    // XXX
+    writeln("Deleting lines: ", command.params);
+    gb.deleteLines(command.params.map!(to!ArrayIdx).array);
 }
 
 
