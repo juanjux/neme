@@ -2,12 +2,9 @@ module neme.core.gapbuffer;
 
 // TODO: move these to local imports when only used once
 import core.memory: GC;
+import std.algorithm: uniq, each, sort, filter, each, copy, count;
 import std.algorithm.comparison : max, min;
 import std.algorithm.searching: canFind;
-import std.algorithm.sorting: sort;
-import std.algorithm.iteration: uniq, each;
-//import std.algorithm.mutation: remove;
-import std.algorithm: copy, count, filter;
 import std.array : appender, insertInPlace, join, minimallyInitializedArray;
 import std.container.array : Array;
 import std.conv;
