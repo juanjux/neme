@@ -345,6 +345,8 @@ debug
         assert(gb.reallocCount == 0);
     }
 }
+
+// deleteRight
 @safe unittest
 {
     dstring text     = "12345";
@@ -357,7 +359,15 @@ debug
         assert(gb._newLinesDirty);
         assert(gb.contentGrpmLen == 0);
     }
+
+    auto gb = gapbuffer(text);
+    gb.deleteRight(2.GrpmCount);
+    assert(gb.content.to!string == "345");
+    gb.deleteRight(3.GrpmCount);
+    assert(gb.content.to!string == "");
 }
+
+// deleteLeft
 @safe unittest
 {
     // Same to the left, if we move the cursor to the left of the text to delete
@@ -374,6 +384,9 @@ debug
         assert(gb.currentGapSize == prevCurSize + txt.firstGraphemesSize(10.GrpmCount));
         assert(gb.content.to!string == "abc");
         assert(gb.reallocCount == 0);
+        gb.cursorForward(3.GrpmCount);
+        gb.deleteLeft(3.GrpmCount);
+        assert(gb.content.to!string == "");
     }
 }
 @safe unittest
@@ -522,6 +535,13 @@ debug
 {
     string text     = "1234567890";
     string combtext = "r̈a⃑⊥ b⃑67890";
+
+    auto pgb = gapbuffer(text, 10);
+    pgb.deleteBetween(0.GrpmIdx, 2.GrpmIdx);
+    assert(pgb.content.to!string == "34567890");
+
+    pgb.deleteBetween(2.GrpmIdx, 4.GrpmIdx);
+    assert(pgb.content.to!string == "347890");
 
     foreach(txt; [text, combtext])
     {
@@ -867,7 +887,7 @@ debug
 
     assert(gb.numLines == 3);
     assert(cgb.numLines == 4);
-    assert(ngb.numLines == 0);
+    assert(ngb.numLines == 1);
 
     assert(gb.line(-3) == "");
     assert(gb.line(0) == "");
@@ -882,6 +902,7 @@ debug
     assert(ngb.line(99999) == "");
 
     assert(gb.line(1) == "01");
+    assert(ngb.line(1) == "abc");
     assert(cgb.line(1) == "01");
 
     assert(gb.line(2) == "34");
@@ -891,6 +912,86 @@ debug
     assert(cgb.line(3) == "");
 
     assert(cgb.line(4) == "r̈a⃑⊥ b⃑");
+}
+
+// lineStartPos
+@safe unittest
+{
+    // Line:           1   2   3
+    // Pos:            012 345 6
+    string text     = "01\n34\n\n";
+    string combtext = "01\n34\n\nr̈a⃑⊥ b⃑\n";
+    string nonl     = "abc";
+
+    auto gb = gapbuffer(text, 10);
+    auto cgb = gapbuffer(combtext, 10);
+    auto ngb = gapbuffer(nonl, 10);
+
+    assert(ngb.lineStartPos(0) == 0);
+    assert(ngb.lineStartPos(1) == 0);
+    assert(ngb.lineStartPos(2) == 0);
+    assert(ngb.lineStartPos(100) == 0);
+
+    assert(gb.lineStartPos(0) == 0);
+    assert(gb.lineStartPos(1) == 0);
+    assert(gb.lineStartPos(2) == 3);
+    assert(gb.lineStartPos(3) == 6);
+    assert(gb.lineStartPos(4) == 6);
+    assert(gb.lineStartPos(100) == 6);
+
+    assert(cgb.lineStartPos(0) == 0);
+    assert(cgb.lineStartPos(1) == 0);
+    assert(cgb.lineStartPos(2) == 3);
+    assert(cgb.lineStartPos(3) == 6);
+    assert(cgb.lineStartPos(4) == 7);
+    assert(cgb.lineStartPos(5) == 7);
+    assert(cgb.lineStartPos(100) == 7);
+
+                  //1   2   3
+                  //012 345 678
+    gb = gapbuffer("01\n34\npok");
+    assert(gb.numLines == 3);
+    assert(gb.lineStartPos(3) == 6);
+}
+
+// lineEndPos
+@safe unittest
+{
+    // Line:           1   2   3
+    // Pos:            012 345 6
+    string text     = "01\n34\n\n";
+    string combtext = "01\n34\n\nr̈a⃑⊥ b⃑\n";
+    string nonl     = "abc";
+
+    auto gb = gapbuffer(text, 10);
+    auto cgb = gapbuffer(combtext, 10);
+    auto ngb = gapbuffer(nonl, 10);
+
+    assert(ngb.lineEndPos(0) == 0);
+    assert(ngb.lineEndPos(1) == 2);
+    assert(ngb.lineEndPos(2) == 2);
+    assert(ngb.lineEndPos(100) == 2);
+
+    assert(gb.lineEndPos(0) == 0);
+    assert(gb.lineEndPos(1) == 2);
+    assert(gb.lineEndPos(2) == 5);
+    assert(gb.lineEndPos(3) == 6);
+    assert(gb.lineEndPos(4) == 6);
+    assert(gb.lineEndPos(100) == 6);
+
+    assert(cgb.lineEndPos(0) == 0);
+    assert(cgb.lineEndPos(1) == 2);
+    assert(cgb.lineEndPos(2) == 5);
+    assert(cgb.lineEndPos(3) == 6);
+    assert(cgb.lineEndPos(4) == 12);
+    assert(cgb.lineEndPos(5) == 12);
+    assert(cgb.lineEndPos(100) == 12);
+
+                  //1   2   3
+                  //012 345 678
+    gb = gapbuffer("01\n34\npok");
+    assert(gb.numLines == 3);
+    assert(gb.lineEndPos(3) == 8);
 }
 
 // cursorToLine
@@ -905,32 +1006,120 @@ debug
     auto ngb = gapbuffer(nonl, 10);
 
     ngb.cursorToLine(0);
-    assert(ngb.cursorPos == 1);
+    assert(ngb.cursorPos == 0);
     ngb.cursorToLine(10);
-    assert(ngb.cursorPos == 3);
+    assert(ngb.cursorPos == 0);
 
     gb.cursorToLine(0);
-    assert(gb.cursorPos == 1);
-    gb.cursorToLine(10);
-    assert(gb.cursorPos == 7);
-
+    assert(gb.cursorPos == 0);
     gb.cursorToLine(1);
-    assert(gb.cursorPos == 1);
-
+    assert(gb.cursorPos == 0);
     gb.cursorToLine(2);
-    assert(gb.cursorPos == 4);
-
+    assert(gb.cursorPos == 3);
     gb.cursorToLine(3);
-    assert(gb.cursorPos == 7);
+    assert(gb.cursorPos == 6);
+    gb.cursorToLine(4);
+    assert(gb.cursorPos == 6);
+    gb.cursorToLine(10);
+    assert(gb.cursorPos == 6);
 
     cgb.cursorToLine(4);
-    assert(cgb.cursorPos == 8);
-
+    assert(cgb.cursorPos == 7);
     cgb.cursorToLine(5);
-    assert(cgb.cursorPos == 13);
-
+    assert(cgb.cursorPos == 7);
     cgb.cursorToLine(100);
-    assert(cgb.cursorPos == 13);
+    assert(cgb.cursorPos == 7);
 }
 
-// XXX test deleteLine
+// deleteLine
+@safe unittest
+{
+    // Line:       1   2   3
+    // Pos:        012 345 6
+    string text = "01\n34\n\n";
+    string nonl = "abc";
+
+    auto gb = gapbuffer(text, 10);
+    auto ngb = gapbuffer(nonl, 10);
+
+    ngb.deleteLine(0);
+    assert(ngb.content.to!string == nonl);
+    ngb.deleteLine(1);
+    assert(ngb.content.to!string == "");
+
+    ngb = gapbuffer(nonl, 10);
+    ngb.deleteLine(100);
+    assert(ngb.content.to!string == nonl);
+
+    gb.deleteLine(1);
+    assert(gb.content.to!string == "34\n\n");
+    gb.deleteLine(1);
+    assert(gb.content.to!string == "\n");
+    gb.deleteLine(1);
+    assert(gb.content.to!string == "");
+
+    gb = gapbuffer(text, 10);
+    gb.deleteLine(2);
+    assert(gb.content.to!string == "01\n\n");
+    gb = gapbuffer(text, 10);
+    gb.deleteLine(3);
+    assert(gb.content.to!string == "01\n34\n");
+
+    gb = gapbuffer("01\n34\npok\n", 10);
+    gb.deleteLine(3);
+    assert(gb.content.to!string == "01\n34\n");
+
+    gb = gapbuffer("01\n34\npok", 10);
+    gb.deleteLine(3);
+    assert(gb.content.to!string == "01\n34\n");
+}
+
+// deleteLines
+@safe unittest
+{
+    // Line:       1   2   3
+    // Pos:        012 345 6
+    string text = "01\n34\n\n";
+
+    auto gb = gapbuffer(text, 10);
+    gb.deleteLines([1, 3]);
+    assert(gb.content == "34\n");
+
+    gb = gapbuffer(text, 10);
+    gb.deleteLines([1]);
+    assert(gb.content == "34\n\n");
+
+    gb = gapbuffer(text, 10);
+    gb.deleteLines([2]);
+    assert(gb.content == "01\n\n");
+
+    gb = gapbuffer(text, 10);
+    gb.deleteLines([3]);
+    assert(gb.content == "01\n34\n");
+
+    gb = gapbuffer(text, 10);
+    gb.deleteLines([100]);
+    assert(gb.content == "01\n34\n\n");
+
+    gb = gapbuffer(text, 10);
+    gb.deleteLines([2, 3]);
+    assert(gb.content == "01\n");
+
+    gb = gapbuffer(text, 10);
+    gb.deleteLines([3, 2, 18, 999, 32, 43, 16, -1]);
+    assert(gb.content == "01\n");
+
+    string nonl = "abc";
+    auto ngb = gapbuffer(nonl, 10);
+    gb.deleteLines([1]);
+    assert(gb.content == "");
+
+    ngb = gapbuffer(nonl, 10);
+    gb.deleteLines([18]);
+    assert(gb.content == "");
+
+    ngb = gapbuffer(nonl, 10);
+    gb.deleteLines([0, 1, 3, 9]);
+    assert(gb.content == "");
+}
+
