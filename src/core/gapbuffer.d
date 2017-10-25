@@ -38,6 +38,25 @@ import std.utf: byDchar;
  (currently no check is done when deleting characters for performance reasons).
 */
 
+// TODO: Subject/Selector/predicate system. A subject is a copy of a region of the buffer.
+// Predicates are functions that take text and return a modified version. There will be
+// several methods:
+
+// - getSubject(Type, Selector, Params): Where:
+//  - Type is the kind of subject (chars, words, lines, paragraphs, functions, etc)
+//  that will be selected.
+//  - Selector is the way the subjects will be selected among others, and it will be
+//  another function. Examples are: indexing, that will select subjects based on their
+//  position inside the buffer or relative to the cursor position, regexp that will select
+//  subjects that match a certain regexp, etc.
+// - Params: parameters for the selector (index for the indexing, string for the
+// regexp, etc).
+//
+// GetSubject would retrieve the text from the subjects as an InputRange. Then another
+// method would map() the selected Predicate over the InputRage and return an
+// OutputRange. That OutputRange will replace the original text of the subjects in
+// the buffer.
+//
 // TODO: scope all the things
 
 // TODO: add a demo mode (you type but the buffer representation is shown in

@@ -18,8 +18,6 @@ import std.algorithm.iteration: map, each;
  *  - add text at cursor position
  *  - add text at specific position
  *  - delete n characters from position
- *  - delte full line(s)
-
  *  - insert new line (optional: with text)
  *  - load and save file
  *  - move words left, right
