@@ -157,6 +157,138 @@ debug
     assert(gbc2.countGraphemes(gbc2.buffer[0..20]) == 20);
 }
 
+/// contentPos2ArrayPos
+@safe unittest
+{
+    auto str_a = "some ascii string"d;
+
+    void checkAtRawPosition(ref GapBuffer gb, GrpmIdx pos, BufferElement c, ulong len = 1)
+    {
+        auto idx = gb.contentPos2ArrayPos(pos);
+        assert(gb.buffer[idx.. idx + len] == c.to!dstring);
+    }
+
+    auto gba = gapbuffer(str_a, 10);
+    checkAtRawPosition(gba, 0.GrpmIdx, 's');
+    checkAtRawPosition(gba, 3.GrpmIdx, 'e');
+    checkAtRawPosition(gba, 7.GrpmIdx, 'c');
+    checkAtRawPosition(gba, 13.GrpmIdx, 'r');
+    checkAtRawPosition(gba, 16.GrpmIdx, 'g');
+
+    assert(gba.contentPos2ArrayPos(17.GrpmIdx) == 27);
+    assert(gba.contentPos2ArrayPos(100.GrpmIdx) == 27);
+
+    auto str_c = "abcd a⃑ b⃑ string"d;
+
+    gba = gapbuffer(str_c, 10);
+
+    checkAtRawPosition(gba, 0.GrpmIdx, 'a');
+    checkAtRawPosition(gba, 1.GrpmIdx, 'b');
+    checkAtRawPosition(gba, 2.GrpmIdx, 'c');
+    checkAtRawPosition(gba, 3.GrpmIdx, 'd');
+    checkAtRawPosition(gba, 4.GrpmIdx, ' ');
+
+    assert(gba.contentPos2ArrayPos(5.GrpmIdx) == 15);
+    assert(gba.contentPos2ArrayPos(6.GrpmIdx) == 17);
+    assert(gba.contentPos2ArrayPos(7.GrpmIdx) == 18);
+    assert(gba.contentPos2ArrayPos(8.GrpmIdx) == 20);
+    assert(gba.contentPos2ArrayPos(9.GrpmIdx) == 21);
+}
+
+/// arrayPos2ContentPos
+@safe unittest
+{
+    auto str = "some ascii string"d;
+    auto gb = gapbuffer(str, 10);
+
+     //inside the gap:
+    assert(gb.arrayPos2ContentPos(0) == 0);
+
+     //after the gap:
+    assert(gb.arrayPos2ContentPos(10) == 0);
+    assert(gb.arrayPos2ContentPos(11) == 1);
+    assert(gb.arrayPos2ContentPos(17) == 7);
+    assert(gb.arrayPos2ContentPos(26) == 16);
+    assert(gb.arrayPos2ContentPos(26) == 16);
+    assert(gb.arrayPos2ContentPos(27) == 16);
+    assert(gb.arrayPos2ContentPos(9999) == 16);
+
+    gb.cursorForward(5.GrpmCount);
+
+    // before the gap:
+    assert(gb.arrayPos2ContentPos(0) == 0);
+    assert(gb.arrayPos2ContentPos(4) == 4);
+
+    // inside the gap:
+    assert(gb.arrayPos2ContentPos(5) == 4);
+    assert(gb.arrayPos2ContentPos(11) == 4);
+    assert(gb.arrayPos2ContentPos(14) == 4);
+
+    // after the gap:
+    assert(gb.arrayPos2ContentPos(15) == 5);
+    assert(gb.arrayPos2ContentPos(20) == 10);
+    assert(gb.arrayPos2ContentPos(26) == 16);
+    assert(gb.arrayPos2ContentPos(27) == 16);
+    assert(gb.arrayPos2ContentPos(9999) == 16);
+}
+@safe unittest
+{
+    auto str = "abcd a⃑ b⃑ string"d;
+    auto gb = gapbuffer(str, 10);
+
+    // inside the gap:
+    assert(gb.arrayPos2ContentPos(0) == 0);
+    assert(gb.arrayPos2ContentPos(10) == 0);
+
+    // after the gap:
+    assert(gb.arrayPos2ContentPos(11) == 1);
+    assert(gb.arrayPos2ContentPos(15) == 5);
+
+    // first multi cp char
+    assert(gb.arrayPos2ContentPos(16) == 6);
+    assert(gb.arrayPos2ContentPos(17) == 6);
+
+    assert(gb.arrayPos2ContentPos(18) == 7);
+
+    // second multi cp char
+    assert(gb.arrayPos2ContentPos(19) == 8);
+    assert(gb.arrayPos2ContentPos(20) == 8);
+
+    // rest
+    assert(gb.arrayPos2ContentPos(21) == 9);
+    assert(gb.arrayPos2ContentPos(22) == 10);
+    assert(gb.arrayPos2ContentPos(23) == 11);
+    assert(gb.arrayPos2ContentPos(24) == 12);
+    assert(gb.arrayPos2ContentPos(25) == 13);
+    assert(gb.arrayPos2ContentPos(26) == 14);
+    assert(gb.arrayPos2ContentPos(27) == 15);
+    assert(gb.arrayPos2ContentPos(9999) == 15);
+
+    gb.cursorForward(5.GrpmCount);
+
+    // before the gap
+    assert(gb.arrayPos2ContentPos(0) == 0);
+    assert(gb.arrayPos2ContentPos(4) == 4);
+
+    // inside the gap:
+    assert(gb.arrayPos2ContentPos(5) == 4);
+    assert(gb.arrayPos2ContentPos(11) == 4);
+    assert(gb.arrayPos2ContentPos(14) == 4);
+
+    // after the gap:
+    assert(gb.arrayPos2ContentPos(15) == 5);
+
+    // first multi cp char
+    assert(gb.arrayPos2ContentPos(16) == 6);
+    assert(gb.arrayPos2ContentPos(17) == 6);
+
+    assert(gb.arrayPos2ContentPos(18) == 7);
+
+    // second multi cp char
+    assert(gb.arrayPos2ContentPos(19) == 8);
+    assert(gb.arrayPos2ContentPos(20) == 8);
+}
+
 // Unicode-optimizing indexes
 // contentBeforeGapGrpmLen;
 // contentAfterGapGrpmLen;
@@ -832,8 +964,35 @@ debug
     assert(gb._averageLineLenCP == 0);
 }
 
-// currentLine & lineAtPosition
+// lineNumAtPos
+@safe unittest
+{
+    string text =     "01\n34\n67\n90\n";
+    string combtext = "01\n34\n67\n90\nr̈a⃑⊥ b⃑\n";
 
+    foreach(txt; [text, combtext]) {
+        auto gb = gapbuffer(txt, 10);
+
+        assert(gb.lineNumAtPos(0.ArrayIdx) == 1);
+        assert(gb.lineNumAtPos(1.ArrayIdx) == 1);
+        assert(gb.lineNumAtPos(2.ArrayIdx) == 1);
+        assert(gb.lineNumAtPos(3.ArrayIdx) == 2);
+        assert(gb.lineNumAtPos(5.ArrayIdx) == 2);
+        assert(gb.lineNumAtPos(6.ArrayIdx) == 3);
+        assert(gb.lineNumAtPos(8.ArrayIdx) == 3);
+        assert(gb.lineNumAtPos(9.ArrayIdx) == 4);
+        assert(gb.lineNumAtPos(11.ArrayIdx) == 4);
+        assert(gb.lineNumAtPos(999.ArrayIdx) == gb.numLines);
+
+        if (txt == combtext) {
+            assert(gb.lineNumAtPos(12.ArrayIdx) == 5);
+        } else {
+            assert(gb.lineNumAtPos(12.ArrayIdx) == 4);
+        }
+    }
+}
+
+// currentLine
 @safe unittest
 {
     string text =     "01\n34\n67\n90\n";
@@ -843,33 +1002,33 @@ debug
         auto gb = gapbuffer(txt, 10);
         gb.indexNewLines;
 
-        assert(gb.currentLine == 0);   // pos = 0
+        assert(gb.currentLine == 1);   // pos = 0
         gb.cursorForward(1.GrpmCount); // pos = 1
-        assert(gb.currentLine == 0);
+        assert(gb.currentLine == 1);
 
         gb.cursorForward(1.GrpmCount); // pos = 2
-        assert(gb.currentLine == 0);
+        assert(gb.currentLine == 1);
 
         gb.cursorForward(1.GrpmCount); // pos = 3
-        assert(gb.currentLine == 1);
+        assert(gb.currentLine == 2);
 
         gb.cursorBackward(1.GrpmCount); // pos = 2
-        assert(gb.currentLine == 0);
-
-        gb.cursorForward(2.GrpmCount); // pos = 4
         assert(gb.currentLine == 1);
 
-        gb.cursorForward(3.GrpmCount); // pos = 7
+        gb.cursorForward(2.GrpmCount); // pos = 4
         assert(gb.currentLine == 2);
+
+        gb.cursorForward(3.GrpmCount); // pos = 7
+        assert(gb.currentLine == 3);
 
         gb.cursorForward(1.GrpmCount); // pos = 8
-        assert(gb.currentLine == 2);
+        assert(gb.currentLine == 3);
 
         gb.cursorForward(2.GrpmCount); // pos = 10
-        assert(gb.currentLine == 3);
+        assert(gb.currentLine == 4);
 
         gb.cursorForward(1.GrpmCount); // pos = 11
-        assert(gb.currentLine == 3);
+        assert(gb.currentLine == 4);
     }
 }
 
@@ -889,29 +1048,29 @@ debug
     assert(cgb.numLines == 4);
     assert(ngb.numLines == 1);
 
-    assert(gb.line(-3) == "");
-    assert(gb.line(0) == "");
-    assert(gb.line(99999) == "");
+    assert(gb.lineArraySubject(-3).text == "");
+    assert(gb.lineArraySubject(0).text == "");
+    assert(gb.lineArraySubject(99999).text == "");
 
-    assert(cgb.line(-3) == "");
-    assert(cgb.line(0) == "");
-    assert(cgb.line(99999) == "");
+    assert(cgb.lineArraySubject(-3).text == "");
+    assert(cgb.lineArraySubject(0).text == "");
+    assert(cgb.lineArraySubject(99999).text == "");
 
-    assert(ngb.line(-3) == "");
-    assert(ngb.line(0) == "");
-    assert(ngb.line(99999) == "");
+    assert(ngb.lineArraySubject(-3).text == "");
+    assert(ngb.lineArraySubject(0).text == "");
+    assert(ngb.lineArraySubject(99999).text == "");
 
-    assert(gb.line(1) == "01");
-    assert(ngb.line(1) == "abc");
-    assert(cgb.line(1) == "01");
+    assert(gb.lineArraySubject(1).text == "01");
+    assert(ngb.lineArraySubject(1).text == "abc");
+    assert(cgb.lineArraySubject(1).text == "01");
 
-    assert(gb.line(2) == "34");
-    assert(cgb.line(2) == "34");
+    assert(gb.lineArraySubject(2).text == "34");
+    assert(cgb.lineArraySubject(2).text == "34");
 
-    assert(gb.line(3) == "");
-    assert(cgb.line(3) == "");
+    assert(gb.lineArraySubject(3).text == "");
+    assert(cgb.lineArraySubject(3).text == "");
 
-    assert(cgb.line(4) == "r̈a⃑⊥ b⃑");
+    assert(cgb.lineArraySubject(4).text == "r̈a⃑⊥ b⃑");
 }
 
 // lineStartPos
@@ -1123,3 +1282,32 @@ debug
     assert(gb.content == "");
 }
 
+// grpmPos2CPPos
+@safe unittest
+{
+    dstring text = " a⃑ b⃑ "d;
+
+    auto gb = gapbuffer(text, 10);
+    assert(gb.grpmPos2CPPos(0.GrpmIdx) == 0);
+    assert(gb.grpmPos2CPPos(1.GrpmIdx) == 1);
+    assert(gb.grpmPos2CPPos(2.GrpmIdx) == 3);
+    assert(gb.grpmPos2CPPos(3.GrpmIdx) == 4);
+    assert(gb.grpmPos2CPPos(4.GrpmIdx) == 6);
+    assert(gb.grpmPos2CPPos(9.GrpmIdx) == 6);
+}
+
+// cpPos2grpmPos
+@safe unittest
+{
+    dstring text = " a⃑ b⃑ "d;
+
+    auto gb = gapbuffer(text, 10);
+    assert(gb.CPPos2GrpmPos(0) == 0);
+    assert(gb.CPPos2GrpmPos(1) == 1);
+    assert(gb.CPPos2GrpmPos(2) == 1);
+    assert(gb.CPPos2GrpmPos(3) == 2);
+    assert(gb.CPPos2GrpmPos(4) == 3);
+    assert(gb.CPPos2GrpmPos(5) == 3);
+    assert(gb.CPPos2GrpmPos(6) == 4);
+    assert(gb.CPPos2GrpmPos(9) == 4);
+}

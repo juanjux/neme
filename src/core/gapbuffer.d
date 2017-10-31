@@ -1,6 +1,8 @@
 module neme.core.gapbuffer;
 
 // TODO: move these to local imports when only used once
+public import neme.core.types;
+
 import core.memory: GC;
 import std.algorithm: uniq, each, sort, filter, each, copy, count;
 import std.algorithm.comparison : max, min;
@@ -13,14 +15,17 @@ import std.range.primitives: popFrontExactly;
 import std.range: take, drop, array, tail;
 import std.stdio;
 import std.traits;
-import std.typecons: Typedef, Flag, Yes, No;
+import std.typecons: Typedef, Flag, Yes, No, tuple, Tuple;
 import std.uni: byCodePoint, byGrapheme;
 import std.utf: byDchar;
 
-// Cursor positions are 0-based. Lines are 1-based.
+/* Important:
+ * - line numbers are 1-based, cursor positions are 0-based.
+ * - The gap goes from gapStart (included) to gapEnd (not included). This is,
+ * gapEnd is the position of the first character OUTSIDE the gap.
 
 /**
- IMPORTANT terminology in this module:
+ Terminology in this module:
 
  CUnit = the internal array type, NOT grapheme or visual character
  CPoint = Code point. Usually, but not always, same as a letter. On dchar
@@ -38,6 +43,28 @@ import std.utf: byDchar;
  (currently no check is done when deleting characters for performance reasons).
 */
 
+// TODO: Subject/Selector/predicate system. A subject is a copy of a region of the buffer.
+// Predicates are functions that take text and return a modified version. There will be
+// several methods:
+
+// - getSubject(Type, Selector, Params): Where:
+//  - Type is the kind of subject (chars, words, lines, paragraphs, functions, etc)
+//  that will be selected.
+//  - Selector is the way the subjects will be selected among others, and it will be
+//  another function. Examples are: indexing, that will select subjects based on their
+//  position inside the buffer or relative to the cursor position, regexp that will select
+//  subjects that match a certain regexp, etc.
+// - Params: parameters for the selector (index for the indexing, string for the
+// regexp, etc).
+//
+// GetSubject would retrieve the text from the subjects as an InputRange. Then another
+// method would map() the selected Predicate over the InputRage and return an
+// OutputRange. That OutputRange will replace the original text of the subjects in
+// the buffer.
+//
+
+// TODO: fix const correctness (current problem is that content() is not const).
+
 // TODO: scope all the things
 
 // TODO: add a demo mode (you type but the buffer representation is shown in
@@ -47,32 +74,26 @@ import std.utf: byDchar;
 
 /**
  * Struct user as Gap Buffer. It uses dchar (UTF32) characters internally for easier and
- * probably faster dealing with unicode chars since 1 dchar = 1 unicode char and slices are just direct indexes
- * without having to use libraries to get the indices of code points.
+ * probably faster dealing with unicode chars since 1 dchar = 1 unicode char and slices
+ * are just direct indexes without having to use libraries to get the indices of code
+ * points.
  */
 
 // This seems to work pretty well for common use cases, can be changed
 // with the property configuredGapSize
 enum DefaultGapSize = 32 * 1024;
-enum Direction { Front, Back }
 
-alias BufferElement = dchar;
-alias BufferType    = BufferElement[];
 
-// For array positions / sizes. Using signed long to be able to detect negatives.
-alias ArrayIdx    = long;
-alias ImArrayIdx  = immutable long;
-alias ArraySize   = long;
-alias ImArraySize = immutable long;
-
-// For grapheme positions / sizes. These are Typedefs to avoid bugs
-// related to mixing ArrayIdx's with GrpmIdx's
-public alias GrpmIdx = Typedef!(long, long.init, "grapheme");
-public alias ImGrpmIdx = immutable GrpmIdx;
-
-public alias GrpmCount = GrpmIdx;
-public alias ImGrpmCount = immutable GrpmIdx;
-
+// Internal Subject using array positions. Public API will use types.Subject instead.
+struct ArraySubject
+{
+    // Position of the first codepoint of the subject
+    ArrayIdx startPos;
+    // Position of the last codepoint of the subject
+    ArrayIdx endPos;
+    // Text content of the subject
+    BufferType text;
+}
 
 @safe pure pragma(inline)
 BufferType asArray(StrT = string)(StrT str)
@@ -81,6 +102,7 @@ BufferType asArray(StrT = string)(StrT str)
 {
     return to!(BufferType)(str.to!dstring);
 }
+
 
 // TODO: unittest
 package pure @safe @nogc pragma(inline)
@@ -240,6 +262,7 @@ struct GapBuffer
         return slice.byGrapheme.count.GrpmCount;
     }
 
+
     // Starting from an ArrayIdx, count the number of codeunits that numGraphemes letters
     // take in the given direction.
     // TODO: check that this doesnt go over the gap
@@ -260,6 +283,81 @@ struct GapBuffer
             charCount = buffer[0..idx].byGrapheme.tail(numGraphemes.to!long).byCodePoint.count;
         }
         return charCount;
+    }
+
+    /// Convert a content (without accounting for the gapbuffer) position in graphemes to
+    /// a position in code points. This / will be the same for buffers without multi code
+    /// point characters (fast / mode).
+    public @safe
+    ArrayIdx grpmPos2CPPos(GrpmIdx pos)
+    {
+        ArrayIdx retpos;
+
+        if (_forceFastMode || !hasCombiningGraphemes) {
+            retpos = pos.to!long;
+        } else {
+            auto gpIdx = min(contentGrpmLen - 1, pos.to!long);
+            retpos = content.byGrapheme.take(gpIdx.to!long).byCodePoint.count.ArrayIdx;
+        }
+        return min(retpos, contentCPLen);
+    }
+
+    public @safe
+    GrpmIdx CPPos2GrpmPos(ArrayIdx pos)
+    {
+        GrpmIdx retpos;
+
+        if (_forceFastMode || !hasCombiningGraphemes) {
+            retpos = pos.to!long;
+        } else {
+            auto topIdx = min(contentCPLen, pos + 1);
+            retpos = content[0..topIdx].byGrapheme.count - 1;
+        }
+        return retpos.to!GrpmIdx;
+    }
+
+    // Convert a position relative to the content (by grapheme and not accounting for the
+    // gapbuffer), in graphemes, to an absolute position in the buffer (by code point and
+    // accounting for the gapbuffer), in codepoints.
+    package @safe pragma(inline)
+    ArrayIdx contentPos2ArrayPos(GrpmIdx pos)
+    {
+        auto cpPos = grpmPos2CPPos(pos);
+
+        if (cpPos >= gapStart) {
+            cpPos += currentGapSize;
+        }
+
+        return min(cpPos, buffer.length);
+    }
+
+    // Convert an absolute array position (by code point and including the gap) to
+    // a position in the content (by grapheme and without the gap)
+    package @safe
+    GrpmIdx arrayPos2ContentPos(ArrayIdx pos)
+    {
+        ArrayIdx noGapPos;
+
+        if (pos >= gapEnd) {// after the gap
+            noGapPos = pos - currentGapSize;
+        } else if (insideGap(pos)) {
+            // Between the gap, give the previous valid position if the gap doesnt
+            // starts at 0 or the next one if it does
+            noGapPos = gapStart == 0 ? 0 : gapStart - 1;
+        } else { // before the gap
+            noGapPos = pos;
+        }
+
+        noGapPos = max(0, noGapPos);
+
+        if (_forceFastMode || !hasCombiningGraphemes) {
+            return GrpmIdx(min(contentCPLen - 1, noGapPos));
+        }
+
+        // slow path
+        auto topIdx = min(contentCPLen, noGapPos);
+        auto numGraphemes = countGraphemes(content[0 .. topIdx]);
+        return GrpmIdx(numGraphemes);
     }
 
     // Create a new gap (empty array) with the configured size
@@ -283,14 +381,15 @@ struct GapBuffer
     /** Print the raw contents of the buffer and a guide line below with the
      *  position of the start and end positions of the gap
      */
-    public @safe
+    package @safe
     void debugContent()
     {
         import std.array: replace;
 
         writeln("gapstart: ", gapStart, " gapend: ", gapEnd, " len: ", buffer.length,
                 " currentGapSize: ", currentGapSize, " configuredGapSize: ", _configuredGapSize,
-                " contentGrpmLen: ", contentGrpmLen, " contentCPLen: ", content.byCodePoint.count);
+                " contentGrpmLen: ", contentGrpmLen.to!long, " contentCPLen: ",
+                content.byCodePoint.count);
         writeln("BeforeGap:|", contentBeforeGap.replace("\n", "/"),"|");
         writeln("AfterGap:|", contentAfterGap.replace("\n", "/"), "|");
         writeln("Text content:|", content.replace("\n", "/"), "|");
@@ -419,6 +518,11 @@ struct GapBuffer
         return GrpmIdx(contentBeforeGapGrpmLen);
     }
 
+    /+
+     ╔══════════════════════════════════════════════════════════════════════════════
+     ║ ⚑ Cursor operations
+     ╚══════════════════════════════════════════════════════════════════════════════
+    +/
     /**
      * Sets the cursor position. The position is relative to
      * the text and ignores the gap
@@ -582,7 +686,7 @@ struct GapBuffer
     /*
      * Delete the text between the specified grapheme positions.
      * Returns:
-     *  The cursor position at the end.
+     *     The cursor position at the end.
      */
     public @safe
     ImGrpmIdx deleteBetween(GrpmIdx start, GrpmIdx end)
@@ -839,16 +943,17 @@ struct GapBuffer
         }
 
         if (nlIndex == 0) {
-            _averageLineLenCP = content.length;
+            _averageLineLenCP = contentCPLen;
         } else {
             _averageLineLenCP = numLines > 0 ? linesLengthSum / nlIndex : contentCPLen;
         }
     }
 
+    // FIXME: this should be const, but content() is not
     public @safe @property
     ArrayIdx numLines()
     {
-        if (content.length == 0) {
+        if (contentGrpmLen == 0) {
             return 0.ArrayIdx;
         }
 
@@ -859,32 +964,35 @@ struct GapBuffer
         return _newLines.length + 1;
     }
 
-    /// Return the indicated line number text. It doesn't move the cursor.
-    public @safe
-    const(BufferType) line(ArrayIdx linenum)
+    // Returns an ArraySubject
+    // FIXME: remove dup
+    package @safe
+    ArraySubject lineArraySubject(ArrayIdx linenum)
     {
         indexNewLines();
 
         if (linenum < 1 || linenum > numLines) {
-            return "";
+            return ArraySubject(0.ArrayIdx, 0.ArrayIdx, "".to!BufferType);
         }
         else if (_newLines.length == 0) {
-            return content;
+            return ArraySubject(0.ArrayIdx, content.length.ArrayIdx, content.dup);
         }
         else if (linenum == 1) {
-            return content[0.._newLines[0]];
+            return ArraySubject(0.ArrayIdx, _newLines[0], content[0.._newLines[0]].dup);
         }
 
-        return content[_newLines[linenum - 2] + 1.._newLines[linenum - 1]];
+        auto startPos = _newLines[linenum - 2] + 1;
+        auto endPos   = _newLines[linenum - 1];
+        return ArraySubject(startPos, endPos, content[startPos..endPos].dup);
     }
 
-    /// Get the start position of the specified line
+    /// Get the start position of the specified line. Doesn't move the cursor.
     public @safe
     GrpmIdx lineStartPos(ArrayIdx linenum)
     {
         indexNewLines();
 
-        if (linenum <= 1 || !content.length || !numLines || !_newLines.length) {
+        if (linenum <= 1 || !contentCPLen || !numLines || !_newLines.length) {
             return 0.GrpmIdx;
         }
 
@@ -909,13 +1017,13 @@ struct GapBuffer
         return (_newLines[newLineIdx - 1] + 1).GrpmIdx;
     }
 
-    /// Get the end position of the specified line
+    /// Get the end position of the specified line. Doesn't move the cursor.
     public @safe
     GrpmIdx lineEndPos(ArrayIdx linenum)
     {
         indexNewLines();
 
-        if (linenum < 1 || !content.length || !numLines) {
+        if (linenum < 1 || !contentCPLen || !numLines) {
             return 0.GrpmIdx;
         }
 
@@ -936,7 +1044,7 @@ struct GapBuffer
         return cursorPos;
     }
 
-    /// Delete the specified line
+    /// Delete the specified line. Moves the cursor.
     public @safe
     void deleteLine(ArrayIdx linenum)
     {
@@ -959,7 +1067,7 @@ struct GapBuffer
         deleteBetween(delStart, delEnd);
     }
 
-    /// Delete the specified lines
+    /// Delete the specified lines. Moves the cursor.
     public @safe
     void deleteLines(ArrayIdx[] linenums)
     {
@@ -976,39 +1084,39 @@ struct GapBuffer
     // TODO: fuzzy test this
     /**
      * Returns the current line inside the buffer (0-based index).
+     * Doesn't move the cursor.
      */
     public @safe
-    ArrayIdx lineAtPosition(ArrayIdx pos)
+    ArrayIdx lineNumAtPos(ArrayIdx pos)
     {
         indexNewLines();
 
-        if (_newLines.length < 2 || _averageLineLenCP == 0)
-            return 0;
+        if (pos == 0 || _newLines.length < 2 || _averageLineLenCP == 0)
+            return 1;
+
+        if (pos >= contentCPLen)
+            return numLines;
 
         ArrayIdx aprox = min(_newLines.length - 1, pos / _averageLineLenCP);
 
         while (true) {
-            if (aprox >_newLines.length || aprox < 0) {
-                return aprox;
-            }
+            if (aprox >_newLines.length || aprox < 0)
+                return aprox + 1;
 
             auto guessNewlinePos = _newLines[aprox];
-            if (guessNewlinePos == pos) {
-                // Lucky shot
-                return aprox;
-            }
+            if (guessNewlinePos == pos)
+                return aprox + 1; // Lucky shot
 
             if (guessNewlinePos > pos) {
                 // Current position is after the guessed newline
 
                 if (aprox == 0)
-                    // and it was the first, so found
-                    return 0;
+                    return 1; // it was the first, so found
 
                 // Check the position of the previous newline to see if our pos is between them
-                if (_newLines[aprox - 1] < pos) {
-                    return aprox;
-                }
+                if (_newLines[aprox - 1] < pos)
+                    return aprox + 1;
+
                 // Not found, continue searching back
                 --aprox;
             }
@@ -1017,9 +1125,9 @@ struct GapBuffer
                 // Current position is before the guessed newline
 
                 // Check the position of the next newline to see if our pos is between them
-                if (aprox + 1 == _newLines.length || _newLines[aprox + 1] > pos) {
-                    return aprox + 1;
-                }
+                if (aprox + 1 == _newLines.length || _newLines[aprox + 1] > pos)
+                    return aprox + 2;
+
                 // Not found, continue searching front
                 ++aprox;
             }
@@ -1032,7 +1140,7 @@ struct GapBuffer
     public @safe @property
     ArrayIdx currentLine()
     {
-        return lineAtPosition(gapStart);
+        return lineNumAtPos(gapStart);
     }
 
     /+
