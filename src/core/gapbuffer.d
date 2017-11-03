@@ -85,6 +85,7 @@ enum DefaultGapSize = 32 * 1024;
 
 
 // Internal Subject using array positions. Public API will use types.Subject instead.
+// FIXME: method to convert to Subject
 struct ArraySubject
 {
     // Position of the first codepoint of the subject
@@ -93,6 +94,13 @@ struct ArraySubject
     ArrayIdx endPos;
     // Text content of the subject
     BufferType text;
+
+    // XXX should be const
+    public pure nothrow @safe
+    Subject toSubject(scope GapBuffer gb)
+    {
+        return Subject(gb.CPPos2GrpmPos(startPos), gb.CPPos2GrpmPos(endPos), text);
+    }
 }
 
 @safe pure pragma(inline)
@@ -288,7 +296,7 @@ struct GapBuffer
     /// Convert a content (without accounting for the gapbuffer) position in graphemes to
     /// a position in code points. This / will be the same for buffers without multi code
     /// point characters (fast / mode).
-    public @safe
+    public pure nothrow @safe
     ArrayIdx grpmPos2CPPos(GrpmIdx pos)
     {
         ArrayIdx retpos;
@@ -302,7 +310,7 @@ struct GapBuffer
         return min(retpos, contentCPLen);
     }
 
-    public @safe
+    public pure nothrow @safe
     GrpmIdx CPPos2GrpmPos(ArrayIdx pos)
     {
         GrpmIdx retpos;
@@ -446,7 +454,7 @@ struct GapBuffer
             return _contentCache;
 
         _contentCache = (contentBeforeGap ~ contentAfterGap).to!BufferType;
-        _contentCacheDirty = true;
+        _contentCacheDirty = false;
         return _contentCache;
     }
 
@@ -500,7 +508,7 @@ struct GapBuffer
     /// Return the number of visual chars (graphemes). This number can be
     /// different / from the number of chartype elements or even unicode code
     /// points.
-    public const pure @property @safe pragma(inline)
+    public const pure nothrow @property @safe pragma(inline)
     GrpmCount contentGrpmLen()
     {
         return GrpmCount(contentBeforeGapGrpmLen + contentAfterGapGrpmLen);
@@ -899,7 +907,7 @@ struct GapBuffer
     // "big file mode".
 
     // TODO: fuzzy test
-    public @trusted
+    public pure @trusted
     void indexNewLines()
     {
         if (!_newLinesDirty)
@@ -950,7 +958,7 @@ struct GapBuffer
     }
 
     // FIXME: this should be const, but content() is not
-    public @safe @property
+    public pure nothrow @safe @property
     ArrayIdx numLines()
     {
         if (contentGrpmLen == 0) {
@@ -966,7 +974,7 @@ struct GapBuffer
 
     // Returns an ArraySubject
     // FIXME: remove dup
-    package @safe
+    package pure @safe
     ArraySubject lineArraySubject(ArrayIdx linenum)
     {
         indexNewLines();
@@ -1086,7 +1094,7 @@ struct GapBuffer
      * Returns the current line inside the buffer (0-based index).
      * Doesn't move the cursor.
      */
-    public @safe
+    public pure @safe
     ArrayIdx lineNumAtPos(ArrayIdx pos)
     {
         indexNewLines();

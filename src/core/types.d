@@ -28,6 +28,7 @@ public alias ImGrpmIdx = immutable GrpmIdx;
 public alias GrpmCount = GrpmIdx;
 public alias ImGrpmCount = immutable GrpmIdx;
 
+// XXX Subject and ArraySubject should have a reference to the gapbuffer?
 /// Subject contains the information of a extracted subject
 struct Subject
 {

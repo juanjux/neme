@@ -197,9 +197,10 @@ private void benchProgrammingSessionCP(GBType)()
             g = preLoadedGapBuffer;
         }
         foreach (i; 0..100) {
+            g.addText("// XXr̈a⃑⊥ b⃑67890\n");
             g.addText("private void benchProgrammingSessionCP(bool benchBufferLoad = true) {\n");
             g.cursorBackward(GrpmCount(10));
-            g.addText("XX");
+            g.addText("XXr̈a⃑⊥ b⃑67890");
             g.cursorForward(GrpmCount(12));
             g.addText("enum code = import(\"fixtures/testbench_code_multicp.txt\");\nY");
             g.deleteLeft(1.to!GrpmCount);

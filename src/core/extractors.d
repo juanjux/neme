@@ -23,10 +23,7 @@ Subject[] lines(scope GapBuffer gb, GrpmIdx startPos, Direction dir,
     auto lineno = gb.lineNumAtPos(lineStartPos);
 
     do {
-        ArraySubject s = gb.lineArraySubject(lineno);
-        auto subject = Subject(gb.CPPos2GrpmPos(s.startPos),
-                               gb.CPPos2GrpmPos(s.endPos),
-                               s.text);
+        auto subject = gb.lineArraySubject(lineno).toSubject(gb);
 
         if (predicate(subject))
             subjects ~= subject;
