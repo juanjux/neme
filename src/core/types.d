@@ -53,7 +53,7 @@ package struct ArraySubject
 
     // XXX should be const
     public const @safe
-    const(Subject) toSubject(scope GapBuffer gb)
+    const(Subject) toSubject(const scope GapBuffer gb)
     {
         return Subject(gb.CPPos2GrpmPos(startPos), gb.CPPos2GrpmPos(endPos), text);
     }
@@ -64,5 +64,5 @@ package struct ArraySubject
 alias bool function(const scope Subject subject) Predicate;
 
 // Extractors select one or more elements from the given position and direction
-alias const(Subject)[] function(scope GapBuffer gb, GrpmIdx startPos, Direction dir,
+alias const(Subject)[] function(const scope GapBuffer gb, GrpmIdx startPos, Direction dir,
         ArraySize count, Predicate predicate) Extractor;

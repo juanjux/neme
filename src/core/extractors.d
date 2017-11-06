@@ -1,16 +1,17 @@
 module neme.core.extractors;
 
 import neme.core.gapbuffer;
-import neme.core.types;
 import neme.core.predicates;
+import neme.core.settings;
+import neme.core.types;
 
 import std.algorithm.comparison : min;
-import std.stdio;
 import std.conv;
+import std.stdio;
 
 public @safe
-const(Subject)[] lines(scope GapBuffer gb, GrpmIdx startPos, Direction dir,
-        ArraySize count, Predicate predicate = &All)
+const(Subject)[] lines(const scope GapBuffer gb, GrpmIdx startPos, Direction dir,
+                       ArraySize count, Predicate predicate = &All)
 {
     auto numLines = gb.numLines;
     auto realCount = min(count, numLines);
@@ -41,4 +42,10 @@ const(Subject)[] lines(scope GapBuffer gb, GrpmIdx startPos, Direction dir,
     } while (iterated < count);
 
     return subjects;
+}
+
+public @safe
+const(Subject)[] words(const scope GapBuffer gb, GrpmIdx startPos, Direction dir,
+                    ArraySize count, Predicate predicate = &All)
+{
 }

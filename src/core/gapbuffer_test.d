@@ -470,7 +470,6 @@ debug
         // Deleting should recover space from the gap
         auto prevCurSize = gb.currentGapSize;
         gb.deleteRight(10.GrpmCount);
-        assert(gb._newLinesDirty);
 
         assert(gb.currentGapSize == prevCurSize + txt.firstGraphemesSize(10.GrpmCount));
         assert(gb.content.to!dstring == "abcde");
@@ -488,7 +487,6 @@ debug
     {
         auto gb = gapbuffer(txt);
         gb.deleteRight(5.GrpmCount);
-        assert(gb._newLinesDirty);
         assert(gb.contentGrpmLen == 0);
     }
 
@@ -512,7 +510,6 @@ debug
         auto prevCurSize = gb.currentGapSize;
         gb.cursorForward(10.GrpmCount);
         gb.deleteLeft(10.GrpmCount);
-        assert(gb._newLinesDirty);
         assert(gb.currentGapSize == prevCurSize + txt.firstGraphemesSize(10.GrpmCount));
         assert(gb.content.to!string == "abc");
         assert(gb.reallocCount == 0);
@@ -679,7 +676,6 @@ debug
         auto oldMinusTwo = gb[2.GrpmIdx..$];
         gb.deleteBetween(0.GrpmIdx, 2.GrpmIdx);
         assert(gb.content == oldMinusTwo);
-        assert(gb._newLinesDirty);
 
         gb = gapbuffer(txt, 10);
         auto oldMinutLastTwo = gb[0.GrpmIdx..8.GrpmIdx];
@@ -899,7 +895,6 @@ debug
     assert(gb._newLines[0] == 9);
     assert(gb._newLines[1] == 13);
     assert(gb._averageLineLenCP == 7);
-    assert(!gb._newLinesDirty);
 }
 @safe unittest
 {
