@@ -622,7 +622,6 @@ debug
         assert(gb.reallocCount == 0);
         assert(gb.gapStart == prevGapStart + asArray(txt).length);
         assert(gb.gapEnd == prevGapEnd);
-        assert(gb._newLinesDirty);
     }
 }
 @safe unittest
@@ -643,7 +642,6 @@ debug
         assert(gb.content.to!string == txt);
         assert(gb.gapStart == prevGapStart + asArray(txt).length);
         assert(gb.gapEnd == prevGapEnd + asArray(txt).length);
-        assert(gb._newLinesDirty);
     }
 }
 
@@ -1051,7 +1049,6 @@ debug
     assert(gb.lineArraySubject(-3).text == "");
     assert(gb.lineArraySubject(0).text == "");
     assert(gb.lineArraySubject(99999).text == "");
-
     assert(cgb.lineArraySubject(-3).text == "");
     assert(cgb.lineArraySubject(0).text == "");
     assert(cgb.lineArraySubject(99999).text == "");
@@ -1071,6 +1068,13 @@ debug
     assert(cgb.lineArraySubject(3).text == "");
 
     assert(cgb.lineArraySubject(4).text == "r̈a⃑⊥ b⃑");
+
+    auto numLinesPre = gb.numLines;
+    gb.addText("another line\n");
+    assert(gb.numLines == numLinesPre + 1);
+    gb.addText("another line\n");
+    assert(gb.numLines == numLinesPre + 2);
+
 }
 
 // lineStartPos

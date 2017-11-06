@@ -30,20 +30,39 @@ public alias ImGrpmCount = immutable GrpmIdx;
 
 // XXX Subject and ArraySubject should have a reference to the gapbuffer?
 /// Subject contains the information of a extracted subject
-struct Subject
+public struct Subject
 {
     // Position of the first grapheme of the subject
     GrpmIdx startPos;
     // Position of the last grapheme of the subject
     GrpmIdx endPos;
     // Text content of the subject
-    BufferType text;
+    const(BufferType) text;
+}
+
+// Internal Subject using array positions. Public API will use types.Subject instead.
+// FIXME: method to convert to Subject
+package struct ArraySubject
+{
+    // Position of the first codepoint of the subject
+    ArrayIdx startPos;
+    // Position of the last codepoint of the subject
+    ArrayIdx endPos;
+    // Text content of the subject
+    const(BufferType) text;
+
+    // XXX should be const
+    public const @safe
+    const(Subject) toSubject(scope GapBuffer gb)
+    {
+        return Subject(gb.CPPos2GrpmPos(startPos), gb.CPPos2GrpmPos(endPos), text);
+    }
 }
 
 // Filters are used to select Subjects from a list
 @safe public
-alias bool function(scope Subject subject) Predicate;
+alias bool function(const scope Subject subject) Predicate;
 
 // Extractors select one or more elements from the given position and direction
-alias Subject[] function(scope GapBuffer gb, GrpmIdx startPos, Direction dir,
+alias const(Subject)[] function(scope GapBuffer gb, GrpmIdx startPos, Direction dir,
         ArraySize count, Predicate predicate) Extractor;
