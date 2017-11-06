@@ -474,9 +474,8 @@ struct GapBuffer
         _configuredGapSize = newSize;
 
         // If the newSize if bigger than the current gap, reallocate
-        if (newSize > currentGapSize) {
+        if (newSize > currentGapSize)
             reallocate;
-        }
     }
 
     /// Return the number of code points. This number can be
@@ -635,7 +634,9 @@ struct GapBuffer
         auto oldGapStart = gapStart;
         gapStart = max(gapStart - idxDiff, 0);
         contentBeforeGapGrpmLen -= actualToDelGrpm.to!long;
-        indexNewLines;
+
+        if (buffer[gapStart..oldGapStart].hasNewLine)
+            indexNewLines;
 
         return cursorPos;
     }
@@ -665,7 +666,9 @@ struct GapBuffer
         auto oldGapEnd = gapEnd;
         gapEnd = min(gapEnd + idxDiff, buffer.length);
         contentAfterGapGrpmLen -= actualToDelGrpm.to!long;
-        indexNewLines;
+
+        if (buffer[oldGapEnd..gapEnd].hasNewLine)
+            indexNewLines;
 
         return cursorPos;
     }
@@ -685,7 +688,7 @@ struct GapBuffer
 
         cursorPos = start;
         deleteRight(GrpmCount(end - start));
-        indexNewLines;
+        // deleteRight already calls indexNewLines if needed
 
         return cursorPos;
     }
@@ -727,7 +730,8 @@ struct GapBuffer
         }
 
         contentBeforeGapGrpmLen += graphemesAdded.to!long;
-        if (text.hasNewLine)
+
+        if (!reallocated && text.hasNewLine)
             indexNewLines(Yes.force);
 
         return cursorPos;
@@ -1019,8 +1023,6 @@ struct GapBuffer
         if (linenum < 1 || linenum > _newLines.length + 1) {
             return;
         }
-
-        scope(exit) indexNewLines;
 
         // Single line, delete all
         if (linenum == 1 && _newLines.length == 0) {
