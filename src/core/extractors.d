@@ -61,7 +61,6 @@ const(Subject)[] words(in GapBuffer gb, GrpmIdx startPos, Direction dir,
     auto wordStartPos = curPos;
     ulong iterated = 0;
 
-    // XXX wrap around
     do {
         auto curChar = content[curPos.to!ulong];
 
