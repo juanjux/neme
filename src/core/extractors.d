@@ -8,28 +8,27 @@ import std.algorithm.comparison : min;
 import std.stdio;
 import std.conv;
 
-// XXX iterated and count should consider filtered?
 public @safe
-Subject[] lines(scope GapBuffer gb, GrpmIdx startPos, Direction dir,
+const(Subject)[] lines(scope GapBuffer gb, GrpmIdx startPos, Direction dir,
         ArraySize count, Predicate predicate = &All)
 {
     auto numLines = gb.numLines;
     auto realCount = min(count, numLines);
 
-    Subject[] subjects;
+    const(Subject)[] subjects;
     ulong iterated = 0;
 
     auto lineStartPos = gb.grpmPos2CPPos(startPos);
-    auto lineno = gb.lineNumAtPos(lineStartPos);
+    auto startLine = gb.lineNumAtPos(lineStartPos);
+    auto lineno = startLine;
 
     do {
-        ArraySubject s = gb.lineArraySubject(lineno);
-        auto subject = Subject(gb.CPPos2GrpmPos(s.startPos),
-                               gb.CPPos2GrpmPos(s.endPos),
-                               s.text);
+        auto subject = gb.lineArraySubject(lineno).toSubject(gb);
 
-        if (predicate(subject))
+        if (predicate(subject)) {
             subjects ~= subject;
+            ++iterated;
+        }
 
         // Wrap around on first/last line and loop not finished
         if (dir == Direction.Front) {
@@ -39,7 +38,7 @@ Subject[] lines(scope GapBuffer gb, GrpmIdx startPos, Direction dir,
             if (--lineno < 1)
                 lineno = numLines;
         }
-    } while (++iterated < count);
+    } while (iterated < count);
 
     return subjects;
 }
