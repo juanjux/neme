@@ -63,8 +63,6 @@ import std.utf: byDchar;
 // the buffer.
 //
 
-// TODO: fix const correctness (current problem is that content() is not const).
-
 // TODO: scope all the things
 
 // TODO: add a demo mode (you type but the buffer representation is shown in
@@ -131,8 +129,6 @@ struct GapBuffer
 {
     // The internal buffer holding the text and the gap
     package BufferType buffer = null;
-    // A cache to avoid creating a new array on every content() call when unmodified
-    package BufferType _contentCache = null;
 
     /// Counter of reallocations done since the struct was created to make room for
     /// text bigger than currentGapSize().
@@ -151,7 +147,6 @@ struct GapBuffer
     // mode is enabled
     package GrpmCount contentBeforeGapGrpmLen;
     package GrpmCount contentAfterGapGrpmLen;
-
 
     // If we have combining unicode chars (several code points for a single
     // grapheme) some methods switch to a slower unicode-striding implementation.
