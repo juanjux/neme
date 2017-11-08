@@ -13,6 +13,7 @@ public @safe
 const(Subject)[] lines(in GapBuffer gb, GrpmIdx startPos, Direction dir,
                        ArraySize count, Predicate predicate = &All)
 {
+    auto goingForward = dir == Direction.Front;
     auto numLines = gb.numLines;
     auto realCount = min(count, numLines);
 
@@ -23,7 +24,11 @@ const(Subject)[] lines(in GapBuffer gb, GrpmIdx startPos, Direction dir,
     auto startLine = gb.lineNumAtPos(lineStartPos);
     auto lineno = startLine;
 
-    do {
+    bool limitFound() { return (goingForward && lineno > numLines) ||
+                               (!goingForward && lineno < 1); }
+
+    while (iterated < count && !limitFound)
+    {
         auto line = gb.lineArraySubject(lineno).toSubject(gb);
 
         if (predicate(line)) {
@@ -31,78 +36,89 @@ const(Subject)[] lines(in GapBuffer gb, GrpmIdx startPos, Direction dir,
             ++iterated;
         }
 
-        // Wrap around on first/last line and loop not finished
-        if (dir == Direction.Front) {
-            if (++lineno > numLines)
-                lineno = 1;
-        } else {
-            if (--lineno < 1)
-                lineno = max(numLines, 1);
-        }
-    } while (iterated < count && lineno != startLine);
+        goingForward ? ++lineno : --lineno;
+    }
 
     return lines;
 }
 
-// FIXME: slow mode (iterate by graphemes)
+// FIXME: iterate by graphemes
 public @safe
 const(Subject)[] words(in GapBuffer gb, GrpmIdx startPos, Direction dir,
                     ArraySize count, Predicate predicate = &All)
 {
+    import std.algorithm.mutation: reverse;
+
+    const(Subject)[] words;
+    words.reserve(count);
+
+    auto content = gb.content;
+    auto contentLen = gb.contentGrpmLen;
+
+    if (contentLen == 0)
+        return words;
 
     auto curPos = startPos;
-    const(Subject)[] words;
-    auto content = gb.content;
-    BufferType curWord = [];
-    curWord.reserve(20);
-
-    immutable wordSeps = globalSettings.wordSeparators;
-    bool insideWord = false;
     auto wordStartPos = curPos;
+    BufferType curWord = [];
+    curWord.reserve(64);
+
+    bool goingForward = dir == Direction.Front;
+    bool prevWasWordChar = false;
     ulong iterated = 0;
 
-    do {
-        auto curChar = content[curPos.to!ulong];
+    void maybeAddWord()
+    {
+        GrpmIdx realStart, realEnd;
 
-        if (curChar !in wordSeps) {
-            if (!insideWord) // new word starts
-                wordStartPos = curPos;
+        if (goingForward) {
+            realStart = wordStartPos;
+            realEnd = GrpmIdx(curPos - 1);
+        } else {
+            realStart = GrpmIdx(curPos + 1);
+            realEnd = wordStartPos;
+            // XXX check if this works for graphemes!
+            curWord.reverse;
+        }
 
+        auto word = Subject(realStart, realEnd, curWord);
+
+        if (predicate(word)) {
+            words ~= word;
+            ++iterated;
+        }
+
+        curWord.length = 0;
+    }
+
+    bool limitFound() { return (goingForward  && curPos >= contentLen) ||
+                               (!goingForward && curPos < 0); }
+
+    while (iterated < count) {
+
+        auto curChar = content[curPos.to!long];
+        auto isWordChar = curChar !in globalSettings.wordSeparators;
+
+        if (isWordChar) {
             curWord ~= curChar;
-            insideWord = true;
-        } else {
-            if (insideWord) { // word finished
 
-                GrpmIdx realStart, realEnd;
-                if (dir == Direction.Front) {
-                    realStart = wordStartPos;
-                    realEnd = GrpmIdx(curPos - 1);
-                } else {
-                    realStart = GrpmIdx(curPos - 1);
-                    realEnd = wordStartPos;
-                }
-
-                auto word = Subject(realStart, realEnd, curWord.dup);
-
-                if (predicate(word)) {
-                    words ~= word;
-                    ++iterated;
-                }
-                curWord.length = 0;
-            } // else: inter-words space: noop
-
-            insideWord = false;
+            if (!prevWasWordChar) // start of new word
+                wordStartPos = curPos;
+        } else if (prevWasWordChar) { // end of the word
+            maybeAddWord;
         }
 
-        // Wrap around
-        if (dir == Direction.Front) {
-            if (++curPos >= gb.contentGrpmLen)
-                curPos = 0;
-        } else {
-            if (--curPos < 0)
-                curPos = gb.contentGrpmLen - 1;
+        goingForward ? ++curPos : --curPos;
+
+        if (limitFound()) {
+            if (isWordChar)
+                maybeAddWord;
+
+            break;
         }
-    } while (iterated < count && curPos != startPos);
+
+        prevWasWordChar = isWordChar;
+    }
 
     return words;
 }
