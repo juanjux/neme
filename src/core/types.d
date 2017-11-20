@@ -78,11 +78,6 @@ package struct ArraySubject
 @safe public
 alias bool function(in Subject subject) Predicate;
 
-// Type for the function that'll check if a subject separator has been found and thus
-// the subject should be added to the list
-@safe public
-alias bool function(in DList!BufferElement loaded, in BufferType curGrpm) SeparatorChecker;
-
 // Extractors select one or more elements from the given position and direction
 @safe public
 alias const(Subject)[] function(in GapBuffer gb, GrpmIdx startPos, Direction dir,

@@ -9,6 +9,7 @@ import std.algorithm.comparison : min;
 import std.array: array;
 import std.container.dlist;
 import std.conv;
+import std.traits;
 import std.stdio;
 
 
@@ -16,11 +17,14 @@ import std.stdio;
  * Generic extractor function that servers for many kinds of Subjects. Receives a
  * SeparatorChecker function that will check if we've found the boundary of the current
  * subject to add it to the list.
+ * That function or delegate should have the signature:
+ * bool isSeparator(DList!BufferElement, BufferType);
  **/
 public @safe
-const(Subject)[] extract(in GapBuffer gb, GrpmIdx startPos, Direction dir,
-                           ArraySize count, SeparatorChecker isSeparator,
-                           Predicate predicate = &All)
+const(Subject)[] extract(alias isSeparator)
+    (in GapBuffer gb, GrpmIdx startPos, Direction dir, ArraySize count,
+     Predicate predicate = &All)
+if (isCallable!isSeparator)
 {
     auto contentLen = gb.contentGrpmLen;
     if (contentLen == 0) return [];
@@ -108,23 +112,36 @@ const(Subject)[] lines(in GapBuffer gb, GrpmIdx startPos, Direction dir,
     return lines;
 }
 
-@safe
-private bool isWordLimit(in DList!BufferElement loaded, in BufferType curGrpm)
-{
-    bool isWordChar = true;
-
-    foreach(BufferElement cp; curGrpm) {
-        if (cp in globalSettings.wordSeparators) {
-            isWordChar = false;
-            break;
-        }
-    }
-    return !isWordChar;
-}
+//public @safe
 
 public @safe
 const(Subject)[] words(in GapBuffer gb, GrpmIdx startPos, Direction dir,
                        ArraySize count, Predicate predicate = &All)
 {
-    return extract(gb, startPos, dir, count, &isWordLimit, predicate);
+    bool isWordLimit(in DList!BufferElement loaded, in BufferType curGrpm)
+    {
+        bool isWordChar = true;
+
+        foreach(BufferElement cp; curGrpm) {
+            if (cp in globalSettings.wordSeparators) {
+                isWordChar = false;
+                break;
+            }
+        }
+        return !isWordChar;
+    }
+    return extract!isWordLimit(gb, startPos, dir, count, predicate);
+}
+
+public @safe
+bool isParagraphLimit(in DList!BufferElement loaded, in BufferType curGrpm)
+{
+    return !loaded.empty && loaded.back == '\n' && curGrpm[0] == '\n';
+}
+
+public @safe
+const(Subject)[] paragraphs(in GapBuffer gb, GrpmIdx startPos, Direction dir,
+                            ArraySize count, Predicate predicate = &All)
+{
+    return extract!isParagraphLimit(gb, startPos, dir, count, predicate);
 }
