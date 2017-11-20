@@ -2,6 +2,8 @@ module neme.core.types;
 
 import neme.core.gapbuffer: GapBuffer;
 
+import std.conv: to;
+import std.format: format;
 import std.typecons: Typedef;
 /**
  * Types used in the gapbuffer and extractor implementations.
@@ -38,6 +40,11 @@ public struct Subject
     GrpmIdx endPos;
     // Text content of the subject
     const(BufferType) text;
+
+    string toString()
+    {
+        return format!"(%s-%s)[%s]"(startPos.to!long, endPos.to!long, text);
+    }
 }
 
 // Internal Subject using array positions. Public API will use types.Subject instead.
@@ -53,16 +60,22 @@ package struct ArraySubject
 
     // XXX should be const
     public const @safe
-    const(Subject) toSubject(const scope GapBuffer gb)
+    const(Subject) toSubject(in GapBuffer gb)
     {
         return Subject(gb.CPPos2GrpmPos(startPos), gb.CPPos2GrpmPos(endPos), text);
+    }
+
+    public const pure @safe
+    string toString()
+    {
+        return format!"(%s-%s)[%s]"(startPos.to!long, endPos.to!long, text);
     }
 }
 
 // Filters are used to select Subjects from a list
 @safe public
-alias bool function(const scope Subject subject) Predicate;
+alias bool function(in Subject subject) Predicate;
 
 // Extractors select one or more elements from the given position and direction
-alias const(Subject)[] function(const scope GapBuffer gb, GrpmIdx startPos, Direction dir,
+alias const(Subject)[] function(in GapBuffer gb, GrpmIdx startPos, Direction dir,
         ArraySize count, Predicate predicate) Extractor;

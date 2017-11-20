@@ -421,7 +421,9 @@ struct GapBuffer
     /**
      * Retrieve all the contents of the buffer. Unlike contentBeforeGap
      * and contentAfterGap the returned array will be newly instantiated, so
-     * this method will be slower than the other two.
+     * this method will be slower than the other two. PLEASE NOTE that if you
+     * index the array returned by this function you'll be indexing by code point;
+     * use indexing over the gapbuffer instance directly (gb[x]) to index by grapheme.
      *
      * Returns: The content of the buffer, as BufferElement.
      */
@@ -924,16 +926,14 @@ struct GapBuffer
         }
     }
 
-    public const @safe @property
+    public const @safe @property pragma(inline)
     ArrayIdx numLines()
     {
-        if (contentGrpmLen == 0) {
+        if (contentGrpmLen == 0)
             return 0.ArrayIdx;
-        }
 
-        if (content[$-1] == '\n') {
+        if (content[$-1] == '\n')
             return _newLines.length;
-        }
 
         return _newLines.length + 1;
     }
