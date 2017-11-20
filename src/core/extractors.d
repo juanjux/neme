@@ -13,21 +13,16 @@ public @safe
 const(Subject)[] lines(in GapBuffer gb, GrpmIdx startPos, Direction dir,
                        ArraySize count, Predicate predicate = &All)
 {
-    auto goingForward = dir == Direction.Front;
-    auto numLines = gb.numLines;
-    auto realCount = min(count, numLines);
-
     const(Subject)[] lines;
+    auto goingForward = dir == Direction.Front;
     ulong iterated = 0;
 
     auto lineStartPos = gb.grpmPos2CPPos(startPos);
     auto startLine = gb.lineNumAtPos(lineStartPos);
     auto lineno = startLine;
+    auto limitFound = () => goingForward && lineno > gb.numLines || !goingForward && lineno < 1;
 
-    bool limitFound() { return (goingForward && lineno > numLines) ||
-                               (!goingForward && lineno < 1); }
-
-    while (iterated < count && !limitFound)
+    while (iterated < count && !limitFound())
     {
         auto line = gb.lineArraySubject(lineno).toSubject(gb);
 
@@ -42,30 +37,21 @@ const(Subject)[] lines(in GapBuffer gb, GrpmIdx startPos, Direction dir,
     return lines;
 }
 
-// FIXME: iterate by graphemes
 public @safe
 const(Subject)[] words(in GapBuffer gb, GrpmIdx startPos, Direction dir,
                     ArraySize count, Predicate predicate = &All)
 {
-    import std.algorithm.mutation: reverse;
     import std.container.dlist;
 
-    const(Subject)[] words;
-    words.reserve(count);
-
-    auto content = gb.content;
     auto contentLen = gb.contentGrpmLen;
-
     if (contentLen == 0)
-        return words;
+        return [];
 
+    const(Subject)[] words; words.reserve(count);
     auto pos = startPos;
     auto wordStartPos = pos;
-
     auto curWord = DList!BufferElement();
-
     bool goingForward = (dir == Direction.Front);
-    bool prevWasWordChar = false;
     ulong iterated = 0;
 
     void maybeAddWord() {
@@ -88,14 +74,14 @@ const(Subject)[] words(in GapBuffer gb, GrpmIdx startPos, Direction dir,
         curWord.clear();
     }
 
-    bool limitFound() { return (goingForward  && pos >= contentLen) ||
-                               (!goingForward && pos < 0); }
+    bool prevWasWordChar = false;
+    auto limitFound = () => goingForward && pos >= contentLen || !goingForward && pos < 0;
 
     while (iterated < count) {
 
         const(BufferType) curGrpm = gb[pos.to!long];
-
         bool isWordChar = true;
+
         foreach(BufferElement cp; curGrpm) {
             if (cp in globalSettings.wordSeparators) {
                 isWordChar = false;

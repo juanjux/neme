@@ -926,16 +926,14 @@ struct GapBuffer
         }
     }
 
-    public const @safe @property
+    public const @safe @property pragma(inline)
     ArrayIdx numLines()
     {
-        if (contentGrpmLen == 0) {
+        if (contentGrpmLen == 0)
             return 0.ArrayIdx;
-        }
 
-        if (content[$-1] == '\n') {
+        if (content[$-1] == '\n')
             return _newLines.length;
-        }
 
         return _newLines.length + 1;
     }
