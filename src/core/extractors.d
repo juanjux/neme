@@ -14,17 +14,18 @@ import std.stdio;
 
 
 /**
- * Generic extractor function that servers for many kinds of Subjects. Receives a
- * SeparatorChecker function that will check if we've found the boundary of the current
- * subject to add it to the list.
+ * Generic extractor function that servers for many kinds of Subjects. The isBoundary
+ * compile time parameter is a callable that will check if we've found the boundary of the
+ * current subject to add it to the list.
  * That function or delegate should have the signature:
- * bool isSeparator(DList!BufferElement, BufferType);
+ *
+ * bool isBoundary(DList!BufferElement, BufferType)
  **/
 public @safe
-const(Subject)[] extract(alias isSeparator)
+const(Subject)[] extract(alias isBoundary)
     (in GapBuffer gb, GrpmIdx startPos, Direction dir, ArraySize count,
      Predicate predicate = &All)
-if (isCallable!isSeparator)
+if (isCallable!isBoundary)
 {
     auto contentLen = gb.contentGrpmLen;
     if (contentLen == 0) return [];
@@ -61,7 +62,7 @@ if (isCallable!isSeparator)
     while (iterated < count) {
 
         const(BufferType) curGrpm = gb[pos.to!long];
-        bool isWordChar = !isSeparator(curSubject, curGrpm);
+        bool isWordChar = !isBoundary(curSubject, curGrpm);
 
         if (isWordChar) {
             if (curSubject.empty) // start of new word
@@ -112,13 +113,11 @@ const(Subject)[] lines(in GapBuffer gb, GrpmIdx startPos, Direction dir,
     return lines;
 }
 
-//public @safe
-
 public @safe
 const(Subject)[] words(in GapBuffer gb, GrpmIdx startPos, Direction dir,
                        ArraySize count, Predicate predicate = &All)
 {
-    bool isWordLimit(in DList!BufferElement loaded, in BufferType curGrpm)
+    bool isBoundary(in DList!BufferElement loaded, in BufferType curGrpm)
     {
         bool isWordChar = true;
 
@@ -130,18 +129,17 @@ const(Subject)[] words(in GapBuffer gb, GrpmIdx startPos, Direction dir,
         }
         return !isWordChar;
     }
-    return extract!isWordLimit(gb, startPos, dir, count, predicate);
+    return extract!isBoundary(gb, startPos, dir, count, predicate);
 }
 
-public @safe
-bool isParagraphLimit(in DList!BufferElement loaded, in BufferType curGrpm)
-{
-    return !loaded.empty && loaded.back == '\n' && curGrpm[0] == '\n';
-}
 
 public @safe
 const(Subject)[] paragraphs(in GapBuffer gb, GrpmIdx startPos, Direction dir,
                             ArraySize count, Predicate predicate = &All)
 {
-    return extract!isParagraphLimit(gb, startPos, dir, count, predicate);
+    bool isBoundary(in DList!BufferElement loaded, in BufferType curGrpm)
+    {
+        return !loaded.empty && loaded.back == '\n' && curGrpm[0] == '\n';
+    }
+    return extract!isBoundary(gb, startPos, dir, count, predicate);
 }
