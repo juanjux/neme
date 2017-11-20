@@ -15,8 +15,6 @@ import std.conv;
     auto gb = gapbuffer(text, 10);
 
     auto res = extractors.lines(gb, 3.GrpmIdx, Direction.Front, 4);
-    writeln(res[0]);
-    writeln(res[1]);
     assert(res.length == 2);
     assert(res[0] == Subject(3.GrpmIdx, 5.GrpmIdx, "34".to!BufferType));
     assert(res[1] == Subject(6.GrpmIdx, 6.GrpmIdx, "".to!BufferType));
@@ -121,7 +119,6 @@ import std.conv;
     res2 = extractors.words(gb, 0.GrpmIdx, Direction.Back, 2);
     assert(res2[0] == Subject(0.GrpmIdx, 0.GrpmIdx, "n"));
 }
-
 @safe unittest
 {
     auto gb = gapbuffer("x", 10);
@@ -133,5 +130,20 @@ import std.conv;
     auto res2 = extractors.words(gb, 0.GrpmIdx, Direction.Back, 2);
     assert(res2 == res);
 }
+@safe unittest
+{
+    auto gb = gapbuffer("x\ny\nz\n", 10);
 
-// XXX word tests: multi code point and single char word
+    auto res = extractors.words(gb, 0.GrpmIdx, Direction.Front, 3);
+    assert(res.length == 3);
+    assert(res[0] == Subject(0.GrpmIdx, 0.GrpmIdx, "x".to!BufferType));
+    assert(res[1] == Subject(2.GrpmIdx, 2.GrpmIdx, "y".to!BufferType));
+    assert(res[2] == Subject(4.GrpmIdx, 4.GrpmIdx, "z".to!BufferType));
+
+    auto res2 = extractors.words(gb, GrpmIdx(gb.length - 1), Direction.Back, 3);
+    assert(res2[0] == res[2]);
+    assert(res2[1] == res[1]);
+    assert(res2[2] == res[0]);
+}
+
+// XXX word tests: multi code point

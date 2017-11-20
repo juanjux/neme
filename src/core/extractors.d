@@ -63,7 +63,7 @@ const(Subject)[] words(in GapBuffer gb, GrpmIdx startPos, Direction dir,
     BufferType curWord = [];
     curWord.reserve(64);
 
-    bool goingForward = dir == Direction.Front;
+    bool goingForward = (dir == Direction.Front);
     bool prevWasWordChar = false;
     ulong iterated = 0;
 
@@ -82,7 +82,6 @@ const(Subject)[] words(in GapBuffer gb, GrpmIdx startPos, Direction dir,
         }
 
         auto word = Subject(realStart, realEnd, curWord);
-
         if (predicate(word)) {
             words ~= word;
             ++iterated;
