@@ -48,6 +48,7 @@ const(Subject)[] words(in GapBuffer gb, GrpmIdx startPos, Direction dir,
                     ArraySize count, Predicate predicate = &All)
 {
     import std.algorithm.mutation: reverse;
+    import std.container.dlist;
 
     const(Subject)[] words;
     words.reserve(count);
@@ -58,61 +59,63 @@ const(Subject)[] words(in GapBuffer gb, GrpmIdx startPos, Direction dir,
     if (contentLen == 0)
         return words;
 
-    auto curPos = startPos;
-    auto wordStartPos = curPos;
-    BufferType curWord = [];
-    curWord.reserve(64);
+    auto pos = startPos;
+    auto wordStartPos = pos;
+
+    auto curWord = DList!BufferElement();
 
     bool goingForward = (dir == Direction.Front);
     bool prevWasWordChar = false;
     ulong iterated = 0;
 
-    void maybeAddWord()
-    {
+    void maybeAddWord() {
         GrpmIdx realStart, realEnd;
 
         if (goingForward) {
             realStart = wordStartPos;
-            realEnd = GrpmIdx(curPos - 1);
+            realEnd = GrpmIdx(pos - 1);
         } else {
-            realStart = GrpmIdx(curPos + 1);
+            realStart = GrpmIdx(pos + 1);
             realEnd = wordStartPos;
-            // XXX check if this works for graphemes!
-            curWord.reverse;
         }
 
-        auto word = Subject(realStart, realEnd, curWord);
+        auto word = Subject(realStart, realEnd, curWord.array);
         if (predicate(word)) {
             words ~= word;
             ++iterated;
         }
 
-        curWord.length = 0;
+        curWord.clear();
     }
 
-    bool limitFound() { return (goingForward  && curPos >= contentLen) ||
-                               (!goingForward && curPos < 0); }
+    bool limitFound() { return (goingForward  && pos >= contentLen) ||
+                               (!goingForward && pos < 0); }
 
     while (iterated < count) {
 
-        auto curChar = content[curPos.to!long];
-        auto isWordChar = curChar !in globalSettings.wordSeparators;
+        const(BufferType) curGrpm = gb[pos.to!long];
 
-        if (isWordChar) {
-            curWord ~= curChar;
-
-            if (!prevWasWordChar) // start of new word
-                wordStartPos = curPos;
-        } else if (prevWasWordChar) { // end of the word
-            maybeAddWord;
+        bool isWordChar = true;
+        foreach(BufferElement cp; curGrpm) {
+            if (cp in globalSettings.wordSeparators) {
+                isWordChar = false;
+                break;
+            }
         }
 
-        goingForward ? ++curPos : --curPos;
+        if (isWordChar) {
+            goingForward ? curWord.insertBack(curGrpm) : curWord.insertFront(curGrpm);
+
+            if (!prevWasWordChar) // start of new word
+                wordStartPos = pos;
+        } else if (prevWasWordChar)  // end of the word
+            maybeAddWord;
+
+        goingForward ? ++pos : --pos;
 
         if (limitFound()) {
             if (isWordChar)
                 maybeAddWord;
-
             break;
         }
 

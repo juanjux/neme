@@ -2,6 +2,8 @@ module neme.core.types;
 
 import neme.core.gapbuffer: GapBuffer;
 
+import std.conv: to;
+import std.format: format;
 import std.typecons: Typedef;
 /**
  * Types used in the gapbuffer and extractor implementations.
@@ -38,6 +40,11 @@ public struct Subject
     GrpmIdx endPos;
     // Text content of the subject
     const(BufferType) text;
+
+    string toString()
+    {
+        return format!"(%s-%s)[%s]"(startPos.to!long, endPos.to!long, text);
+    }
 }
 
 // Internal Subject using array positions. Public API will use types.Subject instead.
@@ -56,6 +63,12 @@ package struct ArraySubject
     const(Subject) toSubject(in GapBuffer gb)
     {
         return Subject(gb.CPPos2GrpmPos(startPos), gb.CPPos2GrpmPos(endPos), text);
+    }
+
+    public const pure @safe
+    string toString()
+    {
+        return format!"(%s-%s)[%s]"(startPos.to!long, endPos.to!long, text);
     }
 }
 
