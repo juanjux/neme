@@ -628,8 +628,8 @@ struct GapBuffer
         gapStart = max(gapStart - idxDiff, 0);
         contentBeforeGapGrpmLen -= actualToDelGrpm.to!long;
 
-        if (buffer[gapStart..oldGapStart].hasNewLine)
-            indexNewLines;
+        //if (buffer[gapStart..oldGapStart].hasNewLine)
+        indexNewLines;
 
         return cursorPos;
     }
@@ -660,8 +660,8 @@ struct GapBuffer
         gapEnd = min(gapEnd + idxDiff, buffer.length);
         contentAfterGapGrpmLen -= actualToDelGrpm.to!long;
 
-        if (buffer[oldGapEnd..gapEnd].hasNewLine)
-            indexNewLines;
+        //if (buffer[oldGapEnd..gapEnd].hasNewLine)
+        indexNewLines;
 
         return cursorPos;
     }
@@ -723,9 +723,7 @@ struct GapBuffer
         }
 
         contentBeforeGapGrpmLen += graphemesAdded.to!long;
-
-        if (!reallocated && text.hasNewLine)
-            indexNewLines(Yes.force);
+        indexNewLines(Yes.force);
 
         return cursorPos;
     }
@@ -952,9 +950,8 @@ struct GapBuffer
         return ArraySubject(startPos, endPos, content[startPos..endPos]);
     }
 
-    // FIXME XXX: this one is broken
     public const @safe
-    const(Subject) lineAt(ArrayIdx linenum)
+    const(BufferType) lineAt(ArrayIdx linenum)
     {
         return this[lineStartPos(linenum)..lineEndPos(linenum)];
     }
@@ -1138,8 +1135,7 @@ struct GapBuffer
      * [] (slice) operator, currently only supported as rvalue
      */
 
-    /// OpIndex: BufferType b = gapbuffer[3];
-    /// Please note that this returns a BufferType and NOT a single
+    /// OpIndex: BufferType b = gapbuffer[3]; /// Please note that this returns a BufferType and NOT a single
     /// BufferElement because the returned character could take several code points/units.
     public const @safe
     const(BufferType) opIndex(GrpmIdx pos)

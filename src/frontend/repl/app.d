@@ -11,14 +11,6 @@ import std.algorithm.iteration: map, each;
 import std.algorithm.comparison : max, min;
 
 
-// FIXME XXX:
-//
-// This shows the wrong line number:
-// goto 8, 1
-// a :POK
-// p (shows 9, 3, should be 8, 3)
-// ALSO: lineAt is broken
-
 // Simple sed-like REPL interface. For benchmarks and integration tests.
 
 /* TODO:
