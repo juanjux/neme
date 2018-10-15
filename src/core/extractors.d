@@ -8,6 +8,7 @@ import neme.core.types;
 import std.algorithm.comparison : min;
 import std.conv;
 import std.stdio;
+import std.array;
 
 public @safe
 const(Subject)[] lines(in GapBuffer gb, GrpmIdx startPos, Direction dir,

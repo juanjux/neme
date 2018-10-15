@@ -19,6 +19,30 @@ import std.typecons: Typedef, Flag, Yes, No, tuple, Tuple;
 import std.uni: byCodePoint, byGrapheme;
 import std.utf: byDchar;
 
+// TODO: Subject/Selector/predicate system. A subject is a copy of a region of the buffer.
+// Predicates are functions that take text and return a modified version. There will be
+// several methods:
+
+// - getSubject(Type, Selector, Params): Where:
+//  - Type is the kind of subject (chars, words, lines, paragraphs, functions, etc)
+//  that will be selected.
+//  - Selector is the way the subjects will be selected among others, and it will be
+//  another function. Examples are: indexing, that will select subjects based on their
+//  position inside the buffer or relative to the cursor position, regexp that will select
+//  subjects that match a certain regexp, etc.
+// - Params: parameters for the selector (index for the indexing, string for the
+// regexp, etc).
+//
+// GetSubject would retrieve the text from the subjects as an InputRange. Then another
+// method would map() the selected Predicate over the InputRage and return an
+// OutputRange. That OutputRange will replace the original text of the subjects in
+// the buffer.
+//
+// TODO: scope all the things
+// TODO: add a demo mode (you type but the buffer representation is shown in
+//       real time as you type or move the cursor)
+// TODO: Unify doc comment style
+
 /* Important:
  * - line numbers are 1-based, cursor positions are 0-based.
  * - The gap goes from gapStart (included) to gapEnd (not included). This is,
@@ -43,33 +67,6 @@ import std.utf: byDchar;
  (currently no check is done when deleting characters for performance reasons).
 */
 
-// TODO: Subject/Selector/predicate system. A subject is a copy of a region of the buffer.
-// Predicates are functions that take text and return a modified version. There will be
-// several methods:
-
-// - getSubject(Type, Selector, Params): Where:
-//  - Type is the kind of subject (chars, words, lines, paragraphs, functions, etc)
-//  that will be selected.
-//  - Selector is the way the subjects will be selected among others, and it will be
-//  another function. Examples are: indexing, that will select subjects based on their
-//  position inside the buffer or relative to the cursor position, regexp that will select
-//  subjects that match a certain regexp, etc.
-// - Params: parameters for the selector (index for the indexing, string for the
-// regexp, etc).
-//
-// GetSubject would retrieve the text from the subjects as an InputRange. Then another
-// method would map() the selected Predicate over the InputRage and return an
-// OutputRange. That OutputRange will replace the original text of the subjects in
-// the buffer.
-//
-
-// TODO: scope all the things
-
-// TODO: add a demo mode (you type but the buffer representation is shown in
-//       real time as you type or move the cursor)
-
-// TODO: Unify doc comment style
-
 /**
  * Struct user as Gap Buffer. It uses dchar (UTF32) characters internally for easier and
  * probably faster dealing with unicode chars since 1 dchar = 1 unicode char and slices
@@ -82,7 +79,7 @@ import std.utf: byDchar;
 enum DefaultGapSize = 32 * 1024;
 
 
-@safe pure pragma(inline)
+@safe pure
 BufferType asArray(StrT = string)(StrT str)
     if(is(StrT == string) || is(StrT == wstring) || is(StrT == dstring)
        || is(BufferType) || is(wchar[]) || is(char[]))
@@ -92,7 +89,7 @@ BufferType asArray(StrT = string)(StrT str)
 
 
 // TODO: unittest
-package pure @safe @nogc pragma(inline)
+package pure @safe @nogc
 bool overlaps(ulong destStart, ulong destEnd, ulong sourceStart, ulong sourceEnd)
 {
     return !(
@@ -103,7 +100,7 @@ bool overlaps(ulong destStart, ulong destEnd, ulong sourceStart, ulong sourceEnd
     );
 }
 
-package pure nothrow @safe @nogc pragma(inline)
+package pure nothrow @safe @nogc
 bool hasNewLine(BufferType)(BufferType text)
 {
     import std.string: indexOf;
@@ -111,7 +108,7 @@ bool hasNewLine(BufferType)(BufferType text)
 }
 
 
-public @safe pragma(inline)
+public @safe
 GapBuffer gapbuffer(STR)(STR s, ArraySize gapSize = DefaultGapSize)
 if (isSomeString!STR)
 {
@@ -119,7 +116,7 @@ if (isSomeString!STR)
 }
 
 
-public @safe pragma(inline)
+public @safe
 GapBuffer gapbuffer()
 {
     return GapBuffer("", DefaultGapSize);
@@ -166,18 +163,18 @@ struct GapBuffer
     // Used to optimize currentLine. Updated on indexNewLines(buffer)
     package ArraySize _averageLineLenCP = 90;
 
-    package const pure nothrow @safe @nogc pragma(inline)
+    package const pure nothrow @safe @nogc
     bool insideGap(ArrayIdx pos)
     {
         return (pos >= gapStart && pos < gapEnd);
     }
 
-    public const @property @safe pragma(inline)
-    bool forceFastMode() const
+    public const @property @safe
+    bool forceFastMode()
     {
         return _forceFastMode;
     }
-    public @property @safe pragma(inline)
+    public @property @safe
     void forceFastMode(bool force)
     {
         _forceFastMode = force;
@@ -211,7 +208,7 @@ struct GapBuffer
     // a block of text smaller than the total only call it if hasCombiningGraphemes
     // if false:
     // if (!hasCombiningGraphemes) checkCombinedGraphemes()
-    package @safe pragma(inline)
+    package @safe
     void checkCombinedGraphemes(const(BufferType) text, Flag!"forceCheck" forceCheck = No.forceCheck)
     {
         // Only a small text: only do the check if we didn't
@@ -230,7 +227,7 @@ struct GapBuffer
             hasCombiningGraphemes = false;
         }
     }
-    package @safe pragma(inline)
+    package @safe
     void checkCombinedGraphemes()
     {
         checkCombinedGraphemes(content, Yes.forceCheck);
@@ -238,7 +235,7 @@ struct GapBuffer
 
 
     /// Returns the number of graphemes in the text.
-    public const @safe pragma(inline) inout
+    public const @safe inout
     inout(GrpmCount) countGraphemes(const BufferType  slice)
     {
         // fast path
@@ -252,7 +249,7 @@ struct GapBuffer
     // Starting from an ArrayIdx, count the number of codeunits that numGraphemes letters
     // take in the given direction.
     // TODO: check that this doesnt go over the gap
-    package const @safe pragma(inline)
+    package const @safe
     ArrayIdx idxDiffUntilGrapheme(ArrayIdx idx, GrpmCount numGraphemes, Direction dir)
     {
         // fast path
@@ -305,14 +302,13 @@ struct GapBuffer
     // Convert a position relative to the content (by grapheme and not accounting for the
     // gapbuffer), in graphemes, to an absolute position in the buffer (by code point and
     // accounting for the gapbuffer), in codepoints.
-    package const @safe pragma(inline)
+    package const @safe
     ArrayIdx contentPos2ArrayPos(GrpmIdx pos)
     {
         auto cpPos = grpmPos2CPPos(pos);
 
-        if (cpPos >= gapStart) {
+        if (cpPos >= gapStart)
             cpPos += currentGapSize;
-        }
 
         return min(cpPos, buffer.length);
     }
@@ -347,7 +343,7 @@ struct GapBuffer
     }
 
     // Create a new gap (empty array) with the configured size
-    package const nothrow @safe pragma(inline)
+    package const nothrow @safe
     BufferType createNewGap(ArraySize gapSize=0)
     {
         // if a new gapsize was specified use that, else use the configured default
@@ -401,7 +397,7 @@ struct GapBuffer
      * The returned const array will be a direct reference to the
      * contents inside the buffer.
      */
-    public const pure nothrow @property @safe @nogc pragma(inline)
+    public const pure nothrow @property @safe @nogc
     const(BufferType) contentBeforeGap()
     {
         return buffer[0..gapStart];
@@ -412,7 +408,7 @@ struct GapBuffer
      * The returned const array will be a direct reference to the
      * contents inside the buffer.
      */
-    public const pure nothrow @property @safe @nogc pragma(inline)
+    public const pure nothrow @property @safe @nogc
     const(BufferType) contentAfterGap()
     {
         return buffer[gapEnd .. $];
@@ -427,7 +423,7 @@ struct GapBuffer
      *
      * Returns: The content of the buffer, as BufferElement.
      */
-    public const pure nothrow @property @safe pragma(inline)
+    public const pure nothrow @property @safe
     const(BufferType) content()
     {
         // Implementation note: I tried with a content cache, that would return
@@ -440,7 +436,7 @@ struct GapBuffer
 
     // Current gap size. The returned size is the number of chartype elements
     // (NOT bytes).
-    public const pure nothrow @property @safe @nogc pragma(inline)
+    public const pure nothrow @property @safe @nogc
     ArraySize currentGapSize()
     {
         return gapEnd - gapStart;
@@ -453,7 +449,7 @@ struct GapBuffer
      * Returns:
      *     The configured gap size.
      */
-    public const pure nothrow @property @safe @nogc pragma(inline)
+    public const pure nothrow @property @safe @nogc
     ArraySize configuredGapSize()
     {
         return _configuredGapSize;
@@ -464,7 +460,7 @@ struct GapBuffer
      * at creation and reallocation time and will cause a reallocation to
      * generate a buffer with the new gap.
      */
-    public @property @safe pragma(inline)
+    public @property @safe
     void configuredGapSize(ArraySize newSize)
     {
         enforce(newSize > 1, "Minimum gap size must be greater than 1");
@@ -478,7 +474,7 @@ struct GapBuffer
     /// Return the number of code points. This number can be
     /// different / from the number of graphemes (visual characters) elements
     /// if the text contain multi-cp graphemes.
-    public const pure nothrow @property @safe pragma(inline)
+    public const pure nothrow @property @safe
     ArraySize contentCPLen()
     {
         return buffer.length - currentGapSize;
@@ -487,7 +483,7 @@ struct GapBuffer
     /// Return the number of visual chars (graphemes). This number can be
     /// different / from the number of chartype elements or even unicode code
     /// points.
-    public const pure nothrow @property @safe pragma(inline)
+    public const pure nothrow @property @safe
     GrpmCount contentGrpmLen()
     {
         return GrpmCount(contentBeforeGapGrpmLen + contentAfterGapGrpmLen);
@@ -497,7 +493,7 @@ struct GapBuffer
     /**
      * Returns the cursor position
      */
-    public const pure nothrow @property @safe pragma(inline)
+    public const pure nothrow @property @safe
     GrpmIdx cursorPos()
     out(res) { assert(res >= 0); }
     body
@@ -514,7 +510,7 @@ struct GapBuffer
      * Sets the cursor position. The position is relative to
      * the text and ignores the gap
      */
-    public @property @safe pragma(inline)
+    public @property @safe
     void cursorPos(GrpmIdx pos)
     in { assert(pos >= 0.GrpmIdx); }
     body
@@ -632,8 +628,8 @@ struct GapBuffer
         gapStart = max(gapStart - idxDiff, 0);
         contentBeforeGapGrpmLen -= actualToDelGrpm.to!long;
 
-        if (buffer[gapStart..oldGapStart].hasNewLine)
-            indexNewLines;
+        //if (buffer[gapStart..oldGapStart].hasNewLine)
+        indexNewLines;
 
         return cursorPos;
     }
@@ -664,8 +660,8 @@ struct GapBuffer
         gapEnd = min(gapEnd + idxDiff, buffer.length);
         contentAfterGapGrpmLen -= actualToDelGrpm.to!long;
 
-        if (buffer[oldGapEnd..gapEnd].hasNewLine)
-            indexNewLines;
+        //if (buffer[oldGapEnd..gapEnd].hasNewLine)
+        indexNewLines;
 
         return cursorPos;
     }
@@ -727,14 +723,12 @@ struct GapBuffer
         }
 
         contentBeforeGapGrpmLen += graphemesAdded.to!long;
-
-        if (!reallocated && text.hasNewLine)
-            indexNewLines(Yes.force);
+        indexNewLines(Yes.force);
 
         return cursorPos;
     }
 
-    public @safe pragma(inline)
+    public @safe
     ImGrpmIdx addText(StrT=string)(StrT text)
         if (isSomeString!StrT)
     {
@@ -746,7 +740,7 @@ struct GapBuffer
      * Returns:
      *  The new cursor position
      */
-    public @safe pragma(inline)
+    public @safe
     ImGrpmIdx addAtPosition(ImGrpmIdx start, const BufferType text)
     {
         cursorPos = start;
@@ -757,7 +751,7 @@ struct GapBuffer
     // Note: this is slow on the slow path so it should only be used on things
     // that are slow anyway like clear() or reallocate(). Other stuff that modifies
     // the text (addText, delete*, cursor*) update the indexes directly.
-    package @safe pragma(inline)
+    package @safe
     void updateGrpmLens()
     {
         if (_forceFastMode || !hasCombiningGraphemes) {
@@ -821,7 +815,7 @@ struct GapBuffer
     {
         return clear(null, false);
     }
-    public @safe pragma(inline)
+    public @safe
     ImGrpmIdx clear(StrT=string)(StrT text="", bool moveToEndEnd=true)
     if (isSomeString!StrT)
     {
@@ -861,12 +855,12 @@ struct GapBuffer
         updateGrpmLens;
         indexNewLines;
     }
-    package @safe pragma(inline)
+    package @safe
     void reallocate()
     {
         reallocate(null);
     }
-    package @safe pragma(inline)
+    package @safe
     void reallocate(StrT=string)(StrT textToAdd)
     if (isSomeString!StrT)
     {
@@ -926,7 +920,7 @@ struct GapBuffer
         }
     }
 
-    public const @safe @property pragma(inline)
+    public const @safe @property
     ArrayIdx numLines()
     {
         if (contentGrpmLen == 0)
@@ -952,8 +946,14 @@ struct GapBuffer
         }
 
         auto startPos = _newLines[linenum - 2] + 1;
-        auto endPos   = _newLines[linenum - 1];
+        auto endPos   = _newLines[min(linenum - 1, _newLines.length - 1)];
         return ArraySubject(startPos, endPos, content[startPos..endPos]);
+    }
+
+    public const @safe
+    const(BufferType) lineAt(ArrayIdx linenum)
+    {
+        return this[lineStartPos(linenum)..lineEndPos(linenum)];
     }
 
     /// Get the start position of the specified line. Doesn't move the cursor.
@@ -985,6 +985,13 @@ struct GapBuffer
         return (_newLines[newLineIdx - 1] + 1).GrpmIdx;
     }
 
+    // FIXME: unittest
+    public const @safe @property
+    long currentCol()
+    {
+        return cursorPos - lineStartPos(currentLine) + 1;
+    }
+
     /// Get the end position of the specified line. Doesn't move the cursor.
     public const @safe
     GrpmIdx lineEndPos(ArrayIdx linenum)
@@ -1002,8 +1009,15 @@ struct GapBuffer
         return (lineStartPos(linenum + 1) - 1).GrpmIdx;
     }
 
+    // FIXME: unittest
+    public const @safe
+    GrpmIdx lineLength(ArrayIdx linenum)
+    {
+        return (lineEndPos(linenum) - lineStartPos(linenum)).GrpmIdx;
+    }
+
     /// Move the cursor to the start of the specified line
-    public @safe pragma(inline)
+    public @safe
     GrpmIdx cursorToLine(ArrayIdx linenum)
     {
         cursorPos(lineStartPos(linenum));
@@ -1029,6 +1043,7 @@ struct GapBuffer
         auto delStart = lineStartPos(linenum);
         auto delEnd = (lineEndPos(linenum) + 1).GrpmIdx;
         deleteBetween(delStart, delEnd);
+        indexNewLines;
     }
 
     /// Delete the specified lines. Moves the cursor.
@@ -1120,10 +1135,9 @@ struct GapBuffer
      * [] (slice) operator, currently only supported as rvalue
      */
 
-    /// OpIndex: BufferType b = gapbuffer[3];
-    /// Please note that this returns a BufferType and NOT a single
+    /// OpIndex: BufferType b = gapbuffer[3]; /// Please note that this returns a BufferType and NOT a single
     /// BufferElement because the returned character could take several code points/units.
-    public const @safe pragma(inline)
+    public const @safe
     const(BufferType) opIndex(GrpmIdx pos)
     {
         // fast path
@@ -1132,7 +1146,7 @@ struct GapBuffer
 
         return content.byGrapheme.drop(pos.to!long).take(1).byCodePoint.array.to!(BufferType);
     }
-    public const @safe pragma(inline)
+    public const @safe
     const(BufferType) opIndex(long pos)
     {
         return opIndex(pos.GrpmIdx);
@@ -1141,7 +1155,7 @@ struct GapBuffer
     /**
      * index operator read: auto x = gapBuffer[0..3]
      */
-    public const @safe pragma(inline)
+    public const @safe
     const(BufferType) opSlice(GrpmIdx start, GrpmIdx end)
     {
         // fast path
@@ -1154,7 +1168,7 @@ struct GapBuffer
                       .take(end.to!long - start.to!long)
                       .byCodePoint.array.to!(BufferType);
     }
-    public const @safe pragma(inline)
+    public const @safe
     const(BufferType) opSlice(long start, long end)
     {
         return opSlice(start.GrpmIdx, end.GrpmIdx);
@@ -1163,7 +1177,7 @@ struct GapBuffer
     /**
      * index operator read: auto x = gapBuffer[]
      */
-    public const pure nothrow @safe pragma(inline)
+    public const pure nothrow @safe
     const(BufferType) opSlice()
     {
         return content;

@@ -58,7 +58,6 @@ package struct ArraySubject
     // Text content of the subject
     const(BufferType) text;
 
-    // XXX should be const
     public const @safe
     const(Subject) toSubject(in GapBuffer gb)
     {
