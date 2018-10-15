@@ -2,7 +2,7 @@ module neme.core.gapbuffer_bench;
 
 import core.memory: GC;
 import std.conv: to;
-import std.datetime;
+import std.datetime.stopwatch;
 import std.stdio;
 import std.typecons;
 
@@ -224,7 +224,7 @@ private void benchProgrammingSessionCP(GBType)()
     auto editSessionFast   = () => editSession(code, Yes.forceFastMode);
     auto editSessionNoLoad = () => editSession(code, Yes.forceFastMode, No.doLoad);
 
-    TickDuration[1] duration = void;
+    Duration[1] duration = void;
 
     // best benchmark done with dub run --compiler=ldc2 --build=release-nobounds --config=optimized
 
@@ -285,7 +285,7 @@ void benchReallocations()
     auto mediumReallocs = () => reallocations(mediumtext);
     auto bigReallocs    = () => reallocations(bigtext);
 
-    TickDuration[1] duration = void;
+    Duration[1] duration = void;
 
     // 0.092 msecs
     duration = benchmark!smallReallocs(1);

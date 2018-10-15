@@ -292,7 +292,6 @@ debug
 // Unicode-optimizing indexes
 // contentBeforeGapGrpmLen;
 // contentAfterGapGrpmLen;
-
 @safe unittest
 {
     dstring combtext = "r̈a⃑⊥ b⃑67890"; // 10 graphemes, 13 len
