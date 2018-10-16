@@ -332,9 +332,8 @@ struct GapBuffer
 
         noGapPos = max(0, noGapPos);
 
-        if (_forceFastMode || !hasCombiningGraphemes) {
+        if (_forceFastMode || !hasCombiningGraphemes) 
             return GrpmIdx(min(contentCPLen - 1, noGapPos));
-        }
 
         // slow path
         auto topIdx = min(contentCPLen, noGapPos);
@@ -491,14 +490,18 @@ struct GapBuffer
     public alias length = contentGrpmLen;
 
     /**
-     * Returns the cursor position
+     * Returns the cursor position. Starts at 0.
      */
     public const pure nothrow @property @safe
     GrpmIdx cursorPos()
     out(res) { assert(res >= 0); }
     body
     {
-        return GrpmIdx(contentBeforeGapGrpmLen);
+        return max(0.GrpmIdx, 
+                min(GrpmIdx(contentBeforeGapGrpmLen), 
+                    GrpmIdx(contentGrpmLen - 1)
+                )
+        );
     }
 
     /+
@@ -508,14 +511,14 @@ struct GapBuffer
     +/
     /**
      * Sets the cursor position. The position is relative to
-     * the text and ignores the gap
+     * the text and ignores the gap. Cursor positions start at 0.
      */
     public @property @safe
     void cursorPos(GrpmIdx pos)
     in { assert(pos >= 0.GrpmIdx); }
     body
     {
-        pos = min(pos, contentGrpmLen);
+        pos = min(pos, GrpmIdx(contentGrpmLen - 1));
 
         if (pos < cursorPos) {
             cursorBackward(GrpmCount(cursorPos - pos));
@@ -723,7 +726,7 @@ struct GapBuffer
         }
 
         contentBeforeGapGrpmLen += graphemesAdded.to!long;
-        indexNewLines(Yes.force);
+        indexNewLines;
 
         return cursorPos;
     }
@@ -878,7 +881,7 @@ struct GapBuffer
     // "big file mode".
 
     public @trusted
-    void indexNewLines(Flag!"force" force = No.force)
+    void indexNewLines()
     {
         ArrayIdx nlIndex;
         // For calculating the average line length, to optimize currentLine():
@@ -960,36 +963,11 @@ struct GapBuffer
     public const @safe
     GrpmIdx lineStartPos(ArrayIdx linenum)
     {
-        if (linenum <= 1 || !contentCPLen || !numLines || !_newLines.length) {
+        if (linenum <= 1 || !contentCPLen || !numLines || !_newLines.length)
             return 0.GrpmIdx;
-        }
 
-        ArrayIdx newLineIdx = linenum - 1;
-
-        if (newLineIdx >= _newLines.length) {
-
-            ArrayIdx lastNewLine;
-            if (_newLines.length == 0) {
-                return 1.GrpmIdx;
-            }
-            else if (content[$-1] == '\n') {
-                lastNewLine = _newLines.length - 2;
-            }
-            else {
-                lastNewLine = _newLines.length - 1;
-            }
-
-            return (_newLines[lastNewLine] + 1).GrpmIdx;
-        }
-
+        ArrayIdx newLineIdx = min(linenum - 1, _newLines.length);
         return (_newLines[newLineIdx - 1] + 1).GrpmIdx;
-    }
-
-    // FIXME: unittest
-    public const @safe @property
-    long currentCol()
-    {
-        return cursorPos - lineStartPos(currentLine) + 1;
     }
 
     /// Get the end position of the specified line. Doesn't move the cursor.
@@ -1000,13 +978,22 @@ struct GapBuffer
             return 0.GrpmIdx;
         }
 
-        if (_newLines.length <= linenum) {
+        if (_newLines.length <= linenum) 
             // last line
             return (contentGrpmLen - 1).GrpmIdx;
-        }
 
         // Next line position minus one
         return (lineStartPos(linenum + 1) - 1).GrpmIdx;
+    }
+
+    public const @safe @property
+    long currentCol()
+    {
+        // Special case: if the cursor is on a \n, col is always 1
+        if (this[cursorPos.to!ulong] == "\n")
+            return 1;
+
+        return cursorPos - lineStartPos(currentLine) + 1;
     }
 
     // FIXME: unittest
