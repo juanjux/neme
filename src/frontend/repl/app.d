@@ -38,7 +38,7 @@ Command parseCmdLine(string line)
     auto colonIdx = line.indexOf(':');
 
 
-    // FIXME: allow to scape colon
+    // FIXME: allow to scape colon?
     if (spaceIdx == -1 || ((colonIdx > -1) && (colonIdx < spaceIdx))) {
         if (colonIdx == -1)
             c.cmd = line;
