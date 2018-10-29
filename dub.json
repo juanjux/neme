@@ -13,8 +13,8 @@
         "importPaths": ["src", "src/core"],
         "stringImportPaths": ["src/core"],
 	"subPackages": [],
-	"excludedSourceFiles": ["src/core/discarded.d", "src/core/exploratory/*",
-	                        "src/frontend/repl/app.d"],
+    "excludedSourceFiles": ["src/core/discarded.d", "src/core/exploratory/*",
+        "src/frontend/repl/app.d"],
 	"configurations": [
         { 
             "name": "debug"

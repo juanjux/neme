@@ -8,6 +8,9 @@ import std.typecons;
 
 import neme.core.gapbuffer;
 
+enum DO_SLOW = true;
+enum DO_FAST = true;
+
 version(none){
 private void bench_overlaps1(uint iterations)
 {
@@ -181,26 +184,30 @@ private void bench_appendarray(uint iterations)
 private void benchProgrammingSessionCP(GBType)()
 {
     // test 1: combining chars (slow path enabled)
-    enum code = import("fixtures/testbench_code_multicp.txt");
+    enum code_multi = import("fixtures/testbench_code_multicp.txt");
+    enum code_nomulti = import("fixtures/testbench_code_nomulti.txt");
     enum gapsize = 1024*32; // seems to be the sweet spot for this test (we're not testing allocation)
     GBType preLoadedGapBuffer = void;
 
-    void editSession(string code, Flag!"forceFastMode" forceFastMode, Flag!"doLoad" doLoad=Yes.doLoad) {
+    void editSession(string code, Flag!"doLoad" doLoad=Yes.doLoad) {
         // 32kb of buffer seems to be a sweet spot for this test
         GBType g = void;
+
         if (doLoad) {
             g = GBType("", gapsize);
-            g.forceFastMode = forceFastMode;
             g.clear(code);
             g.cursorPos = (g.contentGrpmLen.to!ulong / 2).to!GrpmIdx;
         } else {
             g = preLoadedGapBuffer;
         }
+
         foreach (i; 0..100) {
-            g.addText("// XXr̈a⃑⊥ b⃑67890\n");
+            // XXX uncomment
+            // g.addText("// XXr̈a⃑⊥ b⃑67890\n");
             g.addText("private void benchProgrammingSessionCP(bool benchBufferLoad = true) {\n");
             g.cursorBackward(GrpmCount(10));
-            g.addText("XXr̈a⃑⊥ b⃑67890");
+            // XXX uncomment
+            // g.addText("XXr̈a⃑⊥ b⃑67890");
             g.cursorForward(GrpmCount(12));
             g.addText("enum code = import(\"fixtures/testbench_code_multicp.txt\");\nY");
             g.deleteLeft(1.to!GrpmCount);
@@ -220,7 +227,7 @@ private void benchProgrammingSessionCP(GBType)()
 
     enum iterations = 10;
 
-    immutable editSessionSlow = () => editSession(code, No.forceFastMode);
+    immutable editSessionSlow = () => editSession(code_multi);
 
     Duration[1] duration = void;
 
@@ -231,30 +238,216 @@ private void benchProgrammingSessionCP(GBType)()
      ║ ⚑ "Slow indexing" (compatible with Unicode multi CP graphemes)
      ╚══════════════════════════════════════════════════════════════════════════════
     +/
-    // 8.86 secs
-    duration = benchmark!editSessionSlow(iterations);
-    writeln("Edit session, slow operations: ", to!Duration(duration[0]));
+    if (DO_SLOW) { 
+        duration = benchmark!editSessionSlow(iterations);
+        writeln("Edit session, slow operations: ", to!Duration(duration[0]));
 
-    // 2.80 secs
-    preLoadedGapBuffer = GBType(code, gapsize);
-    preLoadedGapBuffer.forceFastMode = false;
-    duration = benchmark!(() => editSession(code, Yes.forceFastMode, No.doLoad)) (iterations);
-    writeln("Edit session, slow operations, not including initial load: ", to!Duration(duration[0]));
+        preLoadedGapBuffer = GBType(code_multi, gapsize);
+        preLoadedGapBuffer.forceFastMode = false;
+        duration = benchmark!(() => editSession(code_multi, No.doLoad)) (iterations);
+        writeln("Edit session, slow operations, not including initial load: ", to!Duration(duration[0]));
+    }
 
     /+
      ╔══════════════════════════════════════════════════════════════════════════════
      ║ ⚑ "Fast indexing" (incompatible with Unicode multi CP graphemes)
      ╚══════════════════════════════════════════════════════════════════════════════
     +/
-    // 3.30 msecs
-    duration = benchmark!(() => editSession(code, Yes.forceFastMode)) (iterations);
-    writeln("Edit session, fast operations: ", to!Duration(duration[0]));
 
-    // 0.167 msecs
-    preLoadedGapBuffer = GBType(code, gapsize);
-    preLoadedGapBuffer.forceFastMode = true;
-    duration = benchmark!(() => editSession(code, Yes.forceFastMode, No.doLoad)) (iterations);
-    writeln("Edit session, fast operations, not including initial load: ", to!Duration(duration[0]));
+    if (DO_FAST) {
+        duration = benchmark!(() => editSession(code, Yes.doLoad)) (iterations);
+        writeln("Edit session, fast operations: ", to!Duration(duration[0]));
+
+        preLoadedGapBuffer = GBType(code_nomulti, gapsize);
+        preLoadedGapBuffer.forceFastMode = true;
+        duration = benchmark!(() => editSession(code_nomulti, No.doLoad)) (iterations);
+        writeln("Edit session, fast operations, not including initial load: ", to!Duration(duration[0]));
+    }
+}
+
+private void benchProgrammingSessionRepl(GBType)()
+{
+    import repl = neme.frontend.repl.repl_lib;
+
+    enum code_multi = import("fixtures/testbench_code_multicp.txt");
+    enum code_nomulti = import("fixtures/testbench_code_nomulti.txt");
+    enum gapsize = 1024*32; // seems to be the sweet spot for this test (we're not testing allocation)
+    GBType preLoadedGapBuffer = void;
+
+    void editSession(string code, Flag!"doLoad" doLoad=Yes.doLoad) {
+        GBType g = void;
+
+        if (doLoad) {
+            g = GBType("", gapsize);
+            g.clear(code);
+            g.cursorPos = (g.contentGrpmLen.to!ulong / 2).to!GrpmIdx;
+        } else {
+            g = preLoadedGapBuffer;
+        }
+
+        repl.Command cmd;
+
+        foreach (i; 0..100) {
+            cmd.textParam = "// dfjksdjkfhdskfh sdkjfhsdkj\n";
+            repl.appendText(g, cmd);
+
+            cmd.textParam = "private void benchProgrammingSessionCP(bool benchBufferLoad = true) {\n";
+            repl.appendText(g, cmd);
+
+            cmd.params = ["10"];
+            repl.cursorLeft(g, cmd);
+
+            cmd.textParam = "// dfjksdjkfhdskfh sdkjfhsdkj\n";
+            repl.appendText(g, cmd);
+
+            cmd.params = ["12"];
+            repl.cursorRight(g, cmd);
+
+            cmd.textParam = "enum code = import(\"fixtures/testbench_code_multicp.txt\");\nY";
+            repl.appendText(g, cmd);
+
+            cmd.params = ["1"];
+            repl.deleteCharsLeft(g, cmd);
+
+            cmd.textParam = "X";
+            repl.appendText(g, cmd);
+
+            cmd.textParam = "immutable fillreplicate = () => a = replicate(filler, 100);\n";
+            repl.appendText(g, cmd);
+
+            cmd.params = ["10"];
+            repl.cursorLeft(g, cmd);
+
+            cmd.params = ["8"];
+            repl.deleteCharsRight(g, cmd);
+
+            cmd.textParam = "1234567890 ";
+            repl.appendText(g, cmd);
+
+            assert(g.contentAfterGapGrpmLen == g.contentAfterGap.length);
+            assert(g.contentBeforeGapGrpmLen == g.contentBeforeGap.length);
+            cmd.params = ["2"];
+            repl.cursorRight(g, cmd);
+
+            assert(g.contentAfterGapGrpmLen == g.contentAfterGap.length);
+            assert(g.contentBeforeGapGrpmLen == g.contentBeforeGap.length);
+            cmd.params = ["160"];
+            repl.deleteCharsRight(g, cmd);
+
+            assert(g.contentAfterGapGrpmLen == g.contentAfterGap.length);
+            assert(g.contentBeforeGapGrpmLen == g.contentBeforeGap.length);
+            cmd.textParam = "// With a lot of overlap, this is much faster. I also benefits a lot from release mode.\n";
+            repl.appendText(g, cmd);
+
+            assert(g.contentAfterGapGrpmLen == g.contentAfterGap.length);
+            assert(g.contentBeforeGapGrpmLen == g.contentBeforeGap.length);
+            cmd.textParam = "// is much faster specially when it doesnt need to extend much the currentGap blablabla.\n";
+            repl.appendText(g, cmd);
+
+            assert(g.contentAfterGapGrpmLen == g.contentAfterGap.length);
+            assert(g.contentBeforeGapGrpmLen == g.contentBeforeGap.length);
+            cmd.textParam = "// End of the loop!\n";
+            repl.appendText(g, cmd);
+
+            assert(g.contentAfterGapGrpmLen == g.contentAfterGap.length);
+            assert(g.contentBeforeGapGrpmLen == g.contentBeforeGap.length);
+            cmd.params = ["200"];
+            repl.cursorLeft(g, cmd);
+
+            assert(g.contentAfterGapGrpmLen == g.contentAfterGap.length);
+            assert(g.contentBeforeGapGrpmLen == g.contentBeforeGap.length);
+            cmd.textParam = "line\n another line \n and even another line \n";
+            repl.appendText(g, cmd);
+
+            assert(g.contentAfterGapGrpmLen == g.contentAfterGap.length);
+            assert(g.contentBeforeGapGrpmLen == g.contentBeforeGap.length);
+            cmd.params = ["5"];
+            repl.lineUp(g, cmd);
+
+            // XXX
+            // repl.printBuffer(g);
+            // writeln("XXX hasComb: ", g.hasCombiningGraphemes);
+
+            assert(g.contentAfterGapGrpmLen == g.contentAfterGap.length);
+            assert(g.contentBeforeGapGrpmLen == g.contentBeforeGap.length);
+            cmd.params = ["2"];
+            repl.deleteLines(g, cmd);
+
+            assert(g.contentAfterGapGrpmLen == g.contentAfterGap.length);
+            assert(g.contentBeforeGapGrpmLen == g.contentBeforeGap.length);
+            cmd.params = ["1", "1"];
+            repl.gotoLineCol(g, cmd);
+
+            assert(g.contentAfterGapGrpmLen == g.contentAfterGap.length);
+            assert(g.contentBeforeGapGrpmLen == g.contentBeforeGap.length);
+            repl.insertLineAbove(g, cmd);
+            repl.insertLineBelow(g, cmd);
+
+            assert(g.contentAfterGapGrpmLen == g.contentAfterGap.length);
+            assert(g.contentBeforeGapGrpmLen == g.contentBeforeGap.length);
+            cmd.params = ["4", "1"];
+            repl.gotoLineCol(g, cmd);
+
+            assert(g.contentAfterGapGrpmLen == g.contentAfterGap.length);
+            assert(g.contentBeforeGapGrpmLen == g.contentBeforeGap.length);
+            cmd.params = ["4"];
+            repl.wordLeft(g, cmd);
+            repl.wordRight(g, cmd);
+
+            assert(g.contentAfterGapGrpmLen == g.contentAfterGap.length);
+            assert(g.contentBeforeGapGrpmLen == g.contentBeforeGap.length);
+            cmd.params = ["3"];
+            repl.lineUp(g, cmd);
+            repl.lineDown(g, cmd);
+
+            assert(g.contentAfterGapGrpmLen == g.contentAfterGap.length);
+            assert(g.contentBeforeGapGrpmLen == g.contentBeforeGap.length);
+            cmd.params = ["5"];
+            repl.deleteWordLeft(g, cmd);
+            repl.deleteWordRight(g, cmd);
+            assert(g.contentAfterGapGrpmLen == g.contentAfterGap.length);
+            assert(g.contentBeforeGapGrpmLen == g.contentBeforeGap.length);
+        }
+    }
+
+    enum iterations = 10;
+    immutable editSessionSlow = () => editSession(code_multi);
+
+    Duration[1] duration = void;
+
+    // best benchmark done with dub run --compiler=ldc2 --build=release-nobounds --config=optimized
+
+    /+
+     ╔══════════════════════════════════════════════════════════════════════════════
+     ║ ⚑ "Slow indexing" (compatible with Unicode multi CP graphemes)
+     ╚══════════════════════════════════════════════════════════════════════════════
+    +/
+    if (DO_SLOW) {
+        duration = benchmark!editSessionSlow(iterations);
+        writeln("Edit session, slow operations: ", to!Duration(duration[0]));
+
+        preLoadedGapBuffer = GBType(code_multi, gapsize);
+        preLoadedGapBuffer.forceFastMode = false;
+        duration = benchmark!(() => editSession(code_multi, No.doLoad)) (iterations);
+        writeln("Edit session, slow operations, not including initial load: ", to!Duration(duration[0]));
+    }
+
+    /+
+     ╔══════════════════════════════════════════════════════════════════════════════
+     ║ ⚑ "Fast indexing" (incompatible with Unicode multi CP graphemes)
+     ╚══════════════════════════════════════════════════════════════════════════════
+    +/
+
+    if (DO_FAST) {
+        // 3.30 msecs
+        duration = benchmark!(() => editSession(code_nomulti, Yes.doLoad)) (iterations);
+        writeln("Edit session, fast operations: ", to!Duration(duration[0]));
+
+        // 0.167 msecs
+        preLoadedGapBuffer = GBType(code_nomulti, gapsize);
+        duration = benchmark!(() => editSession(code_nomulti, No.doLoad)) (iterations);
+        writeln("Edit session, fast operations, not including initial load: ", to!Duration(duration[0]));
+    }
 }
 
 // Test small, medium and big reallocations performance
@@ -375,10 +568,16 @@ private void benchCurrentLineSerialVsParallel()
 
 void bench()
 {
-    writeln("Programming sessions: ");
-    benchProgrammingSessionCP!GapBuffer;
-    writeln("\nReallocations: ");
-    benchReallocations;
+    // writeln("Emulated programming session, using low level gapbuffer methods: ");
+    // benchProgrammingSessionCP!GapBuffer;
+
+    writeln("Emulated programming session, using high level commands on text objects: ");
+    benchProgrammingSessionRepl!GapBuffer;
+
+    // writeln("\nReallocations: ");
+    // benchReallocations;
+
+    // FIXME: remove or update
     //benchCurrentLineSerialVsParallel;
     //benchCurrentLine;
 

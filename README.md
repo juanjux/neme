@@ -11,7 +11,7 @@ The World Domination Plan for this repo is to contain the Neme text editor
 new ways to do modal editing. When one says "modal editor" Vi/Vim 
 automatically comes to mind because there isn't really much beyond it, 
 unlike what happened with Emacs-style text editing that gave birth to
-most of what non modal editors use today.
+  most of what non modal editors use today.
 
 Vim is awesome (I've been using it for 21 years) but I think it can be fun
 to reinvent this wheel and see what can come out of it. After all, Vim 

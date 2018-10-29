@@ -78,7 +78,6 @@ const(Subject)[] words(in GapBuffer gb, GrpmIdx startPos, Direction dir,
     auto limitFound = () => (goingForward && pos >= contentLen) || (!goingForward && pos < 0);
 
     while (iterated < count) {
-
         const(BufferType) curGrpm = gb[pos.to!long];
         bool isWordChar = true;
 
