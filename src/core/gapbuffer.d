@@ -142,8 +142,9 @@ struct GapBuffer
     // Catching some indexes and lengths to avoid having to iterate
     // by grapheme over unicode stuff when the "slow" multi-codepoint
     // mode is enabled
-    package GrpmCount contentBeforeGapGrpmLen;
-    package GrpmCount contentAfterGapGrpmLen;
+    // XXX package
+    public GrpmCount contentBeforeGapGrpmLen;
+    public GrpmCount contentAfterGapGrpmLen;
 
     // If we have combining unicode chars (several code points for a single
     // grapheme) some methods switch to a slower unicode-striding implementation.
@@ -253,10 +254,11 @@ struct GapBuffer
     ArrayIdx idxDiffUntilGrapheme(ArrayIdx idx, GrpmCount numGraphemes, Direction dir) const
     {
         // fast path
-        if (_forceFastMode || !hasCombiningGraphemes)
+        if (_forceFastMode || !hasCombiningGraphemes) {
             return numGraphemes.to!ArrayIdx;
+        }
 
-        if (numGraphemes == 0u)
+        if (numGraphemes == 0u) 
             return ArrayIdx(0);
 
         ArrayIdx charCount;
@@ -494,8 +496,6 @@ struct GapBuffer
      */
     public pure nothrow @property @safe
     GrpmIdx cursorPos() const
-    out(res) { assert(res >= 0); }
-    body
     {
         return max(0.GrpmIdx, 
                 min(GrpmIdx(contentBeforeGapGrpmLen), 
@@ -516,13 +516,27 @@ struct GapBuffer
     public @property @safe
     void cursorPos(GrpmIdx pos)
     {
+        assert(contentAfterGapGrpmLen == contentAfterGap.length);
+        assert(contentBeforeGapGrpmLen == contentBeforeGap.length);
         pos = min(pos, GrpmIdx(contentGrpmLen - 1));
 
+        assert(contentAfterGapGrpmLen == contentAfterGap.length);
+        assert(contentBeforeGapGrpmLen == contentBeforeGap.length);
         if (pos < cursorPos) {
+            assert(contentAfterGapGrpmLen == contentAfterGap.length);
+            assert(contentBeforeGapGrpmLen == contentBeforeGap.length);
             cursorBackward(GrpmCount(cursorPos - pos));
+            assert(contentAfterGapGrpmLen == contentAfterGap.length);
+            assert(contentBeforeGapGrpmLen == contentBeforeGap.length);
         } else {
+            assert(contentAfterGapGrpmLen == contentAfterGap.length);
+            assert(contentBeforeGapGrpmLen == contentBeforeGap.length);
             cursorForward(GrpmCount(pos - cursorPos));
+            assert(contentAfterGapGrpmLen == contentAfterGap.length);
+            assert(contentBeforeGapGrpmLen == contentBeforeGap.length);
         }
+        assert(contentAfterGapGrpmLen == contentAfterGap.length);
+        assert(contentBeforeGapGrpmLen == contentBeforeGap.length);
     }
 
     /**
@@ -533,6 +547,9 @@ struct GapBuffer
     public @safe
     ImGrpmIdx cursorForward(GrpmCount count)
     {
+        assert(contentAfterGapGrpmLen == contentAfterGap.length);
+        assert(contentBeforeGapGrpmLen == contentBeforeGap.length);
+
         if (count <= 0 || buffer.length == 0 || gapEnd + 1 == buffer.length)
             return cursorPos;
 
@@ -565,17 +582,21 @@ struct GapBuffer
      */
     public @safe
     ImGrpmIdx cursorBackward(GrpmCount count)
-    in { assert(count >= 0.GrpmCount); }
-    out(res) { assert(res >= 0); }
     body
     {
-        if (count <= 0 || buffer.length == 0 || gapStart == 0)
+        if (count <= 0 || buffer.length == 0 || gapStart == 0 || count == 0.GrpmCount)
             return cursorPos;
 
         ImGrpmCount actualToMoveGrpm = min(count, contentBeforeGapGrpmLen);
         immutable ImArrayIdx idxDiff = idxDiffUntilGrapheme(gapStart, actualToMoveGrpm,
                 Direction.Back);
 
+        // XXX BUG: idxDiff > gapStart! (see above)
+        writeln("XXX cursorBack, hasCombined?: ", hasCombiningGraphemes);
+        writeln("XXX idxDiff: ", idxDiff);
+        writeln("XXX gapStart: ", gapStart);
+        writeln("XXX contentBeforeGapGrpmLen: ", contentBeforeGapGrpmLen);
+        writeln("XXX contentBeforeGap.length: ", contentBeforeGap.length);
         ImArrayIdx newGapStart = gapStart - idxDiff;
         ImArrayIdx newGapEnd = gapEnd - idxDiff;
 
@@ -684,35 +705,45 @@ struct GapBuffer
      */
     public @safe
     ImGrpmIdx addText(const BufferType text)
-    out(res) { assert(res >= 0); }
-    body
     {
+        assert(contentBeforeGapGrpmLen == contentBeforeGap.length);
         if (text.length == 0)
             return cursorPos;
 
+        assert(contentBeforeGapGrpmLen == contentBeforeGap.length);
         bool reallocated;
 
+        assert(contentBeforeGapGrpmLen == contentBeforeGap.length);
         if (text.length >= currentGapSize) {
+            assert(contentBeforeGapGrpmLen == contentBeforeGap.length);
             // doesnt fill in the gap, reallocate the buffer adding the text
+            writeln("XXX REALLOCATING");
             reallocate(text);
             reallocated = true;
         } else {
+            writeln("XXX NOT REALLOCATING");
+            assert(contentBeforeGapGrpmLen == contentBeforeGap.length);
             checkCombinedGraphemes(text);
             ImArrayIdx newGapStart = gapStart + text.length;
             text.copy(buffer[gapStart..newGapStart]);
             gapStart = newGapStart;
-        }
+            GrpmIdx graphemesAdded;
 
-        GrpmIdx graphemesAdded;
-        // fast path
-        if (_forceFastMode || !hasCombiningGraphemes) {
-            graphemesAdded = text.length;
-        } else {
-            graphemesAdded = countGraphemes(text);
-        }
+            // fast path
+            if (_forceFastMode || !hasCombiningGraphemes) {
+                graphemesAdded = text.length;
+            } else {
+                graphemesAdded = countGraphemes(text);
+            }
 
-        contentBeforeGapGrpmLen += graphemesAdded.to!long;
-        indexNewLines;
+            writeln("XXX graphemesAdded: ", graphemesAdded);
+            writeln("XXX contentBeforeGapGrpmLen: ", contentBeforeGapGrpmLen);
+            writeln("XXX contentBeforeGap.length: ", contentBeforeGap.length);
+            contentBeforeGapGrpmLen += graphemesAdded.to!long;
+            assert(contentBeforeGapGrpmLen == contentBeforeGap.length);
+            indexNewLines;
+            assert(contentBeforeGapGrpmLen == contentBeforeGap.length);
+        }
 
         return cursorPos;
     }
@@ -763,8 +794,6 @@ struct GapBuffer
      */
     public @safe
     ImGrpmIdx clear(const BufferType text, bool moveToEndEnd=true)
-    out(res) { assert(res >= 0); }
-    body
     {
         immutable bool noRealloc = buffer.length >= (text.length + _configuredGapSize);
 
@@ -822,6 +851,7 @@ struct GapBuffer
     package @trusted
     void reallocate(const BufferType textToAdd)
     {
+        writeln("XXX YYY ZZZ REALLOCATING");
         immutable ImArraySize oldContentAfterGapSize = contentAfterGap.length;
 
         // Check if the actual size of the gap is smaller than configuredSize
