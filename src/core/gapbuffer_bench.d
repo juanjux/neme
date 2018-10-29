@@ -8,7 +8,7 @@ import std.typecons;
 
 import neme.core.gapbuffer;
 
-enum DO_SLOW = false;
+enum DO_SLOW = true;
 enum DO_FAST = true;
 
 version(none){
@@ -288,69 +288,39 @@ private void benchProgrammingSessionRepl(GBType)()
         repl.Command cmd;
 
         foreach (i; 0..100) {
-            writeln("XXX iteration: ", i);
-            writeln("XXX hasCombined: ", g.hasCombiningGraphemes);
-            assert(g.contentAfterGapGrpmLen == g.contentAfterGap.length);
-            assert(g.contentBeforeGapGrpmLen == g.contentBeforeGap.length);
             cmd.textParam = "// dfjksdjkfhdskfh sdkjfhsdkj\n";
-            assert(g.contentAfterGapGrpmLen == g.contentAfterGap.length);
-            assert(g.contentBeforeGapGrpmLen == g.contentBeforeGap.length);
             repl.appendText(g, cmd);
-            assert(g.contentAfterGapGrpmLen == g.contentAfterGap.length);
-            assert(g.contentBeforeGapGrpmLen == g.contentBeforeGap.length);
 
-            assert(g.contentAfterGapGrpmLen == g.contentAfterGap.length);
-            assert(g.contentBeforeGapGrpmLen == g.contentBeforeGap.length);
             cmd.textParam = "private void benchProgrammingSessionCP(bool benchBufferLoad = true) {\n";
             repl.appendText(g, cmd);
 
-            assert(g.contentAfterGapGrpmLen == g.contentAfterGap.length);
-            assert(g.contentBeforeGapGrpmLen == g.contentBeforeGap.length);
             cmd.params = ["10"];
             repl.cursorLeft(g, cmd);
 
-            assert(g.contentAfterGapGrpmLen == g.contentAfterGap.length);
-            assert(g.contentBeforeGapGrpmLen == g.contentBeforeGap.length);
             cmd.textParam = "// dfjksdjkfhdskfh sdkjfhsdkj\n";
             repl.appendText(g, cmd);
 
-            assert(g.contentAfterGapGrpmLen == g.contentAfterGap.length);
-            assert(g.contentBeforeGapGrpmLen == g.contentBeforeGap.length);
             cmd.params = ["12"];
             repl.cursorRight(g, cmd);
 
-            assert(g.contentAfterGapGrpmLen == g.contentAfterGap.length);
-            assert(g.contentBeforeGapGrpmLen == g.contentBeforeGap.length);
             cmd.textParam = "enum code = import(\"fixtures/testbench_code_multicp.txt\");\nY";
             repl.appendText(g, cmd);
 
-            assert(g.contentAfterGapGrpmLen == g.contentAfterGap.length);
-            assert(g.contentBeforeGapGrpmLen == g.contentBeforeGap.length);
             cmd.params = ["1"];
             repl.deleteCharsLeft(g, cmd);
 
-            assert(g.contentAfterGapGrpmLen == g.contentAfterGap.length);
-            assert(g.contentBeforeGapGrpmLen == g.contentBeforeGap.length);
             cmd.textParam = "X";
             repl.appendText(g, cmd);
 
-            assert(g.contentAfterGapGrpmLen == g.contentAfterGap.length);
-            assert(g.contentBeforeGapGrpmLen == g.contentBeforeGap.length);
             cmd.textParam = "immutable fillreplicate = () => a = replicate(filler, 100);\n";
             repl.appendText(g, cmd);
 
-            assert(g.contentAfterGapGrpmLen == g.contentAfterGap.length);
-            assert(g.contentBeforeGapGrpmLen == g.contentBeforeGap.length);
             cmd.params = ["10"];
             repl.cursorLeft(g, cmd);
 
-            assert(g.contentAfterGapGrpmLen == g.contentAfterGap.length);
-            assert(g.contentBeforeGapGrpmLen == g.contentBeforeGap.length);
             cmd.params = ["8"];
             repl.deleteCharsRight(g, cmd);
 
-            assert(g.contentAfterGapGrpmLen == g.contentAfterGap.length);
-            assert(g.contentBeforeGapGrpmLen == g.contentBeforeGap.length);
             cmd.textParam = "1234567890 ";
             repl.appendText(g, cmd);
 
