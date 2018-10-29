@@ -34,7 +34,7 @@ class Settings
             '&'.to!BufferElement,
             '^'.to!BufferElement,
             '%'.to!BufferElement,
-            // '#'.to!BufferElement, // XXX FIXME RECOMMENT
+            '#'.to!BufferElement,
             '@'.to!BufferElement,
             '!'.to!BufferElement,
             '?'.to!BufferElement,
