@@ -3,6 +3,7 @@ module neme.frontend.repl.app;
 import neme.core.gapbuffer: gapbuffer, GapBuffer, ArrayIdx;
 import neme.core.extractors;
 import neme.core.types;
+import extractors = neme.core.extractors;
 import std.array: array;
 
 import std.stdio;
@@ -77,6 +78,7 @@ void error(Command command)
 
 // Commands implementation follow
 
+// pb (no params)
 void printBuffer(ref GapBuffer gb)
 {
     import std.string: splitLines, leftJustify;
@@ -92,18 +94,20 @@ void printBuffer(ref GapBuffer gb)
     writeln("Cursor position: line: ", gb.currentLine, " column: ", gb.currentCol);
 }
 
+// pl line1,line2,line3...
 void printLines(ref GapBuffer gb, Command command)
 {
     command.params.each!(lineNum => writeln(gb.lineAt(lineNum.to!long)));
 }
 
+// dl line1,line2,line3...
 void deleteLines(ref GapBuffer gb, Command command)
 {
     writeln("Deleting lines: ", command.params);
     gb.deleteLines(command.params.map!(to!ArrayIdx).array);
 }
 
-
+// ap :text to append at the end of the text
 void appendText(ref GapBuffer gb, Command command)
 {
     if (command.textParam.length == 0)
@@ -113,6 +117,7 @@ void appendText(ref GapBuffer gb, Command command)
     gb.addText(command.textParam);
 }
 
+// a :text to add at cursor position
 void addText(ref GapBuffer gb, Command command)
 {
     if (command.textParam.length == 0)
@@ -121,66 +126,125 @@ void addText(ref GapBuffer gb, Command command)
     gb.addText(command.textParam);
 }
 
-
-void deleteChars(ref GapBuffer gb, Command command)
+// dcl howmany
+void deleteCharsLeft(ref GapBuffer gb, Command command)
 {
-    // XXX
+    gb.deleteLeft(command.params[0].to!long.to!GrpmCount);
 }
 
+// dcr howmany
+void deleteCharsRight(ref GapBuffer gb, Command command)
+{
+    gb.deleteRight(command.params[0].to!long.to!GrpmCount);
+}
+
+// g line,col
 void gotoLineCol(ref GapBuffer gb, Command command)
 {
     auto line = min(gb.numLines,
                     max(1, command.params[0].to!long));
-    auto col = min(gb.lineLength(line),
-                   GrpmIdx(max(1, command.params[1].to!long)));
+    GrpmIdx col;
+    if (command.params.length > 1) { 
+        col = min(gb.lineLength(line),
+                    GrpmIdx(max(1, command.params[1].to!long)));
+    } else
+        col = 1;
 
-    gb.cursorPos = GrpmIdx(gb.lineStartPos(line) + col);
+    gb.cursorPos = GrpmIdx(gb.lineStartPos(line) + col - 1);
     writeln(gb.cursorPos);
 }
 
+// l howmany
 void cursorLeft(ref GapBuffer gb, Command command)
 {
-    // XXX
+    gb.cursorBackward(command.params[0].to!long.to!GrpmCount);
 }
 
+// r howmany
 void cursorRight(ref GapBuffer gb, Command command)
 {
-    // XXX
+    gb.cursorForward(command.params[0].to!long.to!GrpmCount);
 }
 
-void insertLine(ref GapBuffer gb, Command command)
+// ila
+void insertLineAbove(ref GapBuffer gb, Command command)
 {
-    // XXX
+    auto lines = extractors.lines(gb, gb.cursorPos, Direction.Back, 1);
+    if (lines.length > 0) {
+        gb.cursorPos = (lines[0].startPos - 1).GrpmIdx;
+        gb.addText("\n");
+    }
 }
 
+// ilb
+void insertLineBelow(ref GapBuffer gb, Command command)
+{
+    auto lines = extractors.lines(gb, gb.cursorPos, Direction.Front, 1);
+    if (lines.length > 0) {
+        gb.cursorPos = lines[0].endPos;
+        gb.addText("\n");
+    }
+}
+
+// YOLO error control but it doesn't matter since this crap is only for 
+// integration testing
 void loadFile(ref GapBuffer gb, Command command)
 {
-    // XXX
+    import std.file: readText;
+    gb.clear(readText(command.params[0]));
 }
 
+// Ditto
 void saveFile(ref GapBuffer gb, Command command)
 {
-    // XXX
+    import std.file: write;
+    write(command.params[0], gb.content.to!string);
 }
 
+// wl [numWords]
 void wordLeft(ref GapBuffer gb, Command command)
 {
-    // XXX
+    auto count = command.params.length > 0 ? command.params[0].to!long : 1;
+    auto words = extractors.words(gb, gb.cursorPos, Direction.Back, count);
+    writeln("XXXPrev: ", words);
+    if (words.length > 0) {
+        gb.cursorPos = (words[$-1].startPos - 1).GrpmIdx;
+        writeln(words);
+    }
 }
 
+// wr [numWords]
 void wordRight(ref GapBuffer gb, Command command)
 {
-    // XXX
+    auto count = command.params.length > 0 ? command.params[0].to!long : 1;
+    auto words = extractors.words(gb, gb.cursorPos, Direction.Front, count + 1);
+    if (words.length > 0) {
+        auto limit = words.length > 1 ? words.length - 1 : words.length;
+        gb.cursorPos = words.length > 1 ? words[$-1].startPos : words[$-1].endPos;
+        writeln(words[0..count]);
+    }
 }
 
+// lu [numLines]
 void lineUp(ref GapBuffer gb, Command command)
 {
-    // XXX
+    auto count = command.params.length > 0 ? command.params[0].to!long : 1;
+    auto lines = extractors.lines(gb, (gb.cursorPos - 1).GrpmIdx, Direction.Back, count);
+    if (lines.length > 0) {
+        gb.cursorPos = lines[$-1].startPos;
+        writeln(lines);
+    }
 }
 
+// ld [numLines]
 void lineDown(ref GapBuffer gb, Command command)
 {
-    // XXX
+    auto count = command.params.length > 0 ? command.params[0].to!long : 1;
+    auto lines = extractors.lines(gb, (gb.cursorPos).GrpmIdx, Direction.Front, count + 1);
+    if (lines.length > 0) {
+        gb.cursorPos = lines[$-1].startPos;
+        writeln(lines[0..count]);
+    }
 }
 
 void deleteWordLeft(ref GapBuffer gb, Command command)
@@ -235,9 +299,13 @@ int main(string[] args)
         case "appendText":
             appendText(gb, command);
             break;
-        case "d":
-        case "deleteChars":
-            deleteChars(gb, command);
+        case "dcl":
+        case "deleteCharsLeft":
+            deleteCharsLeft(gb, command);
+            break;
+        case "dcr":
+        case "deleteCharsRight":
+            deleteCharsRight(gb, command);
             break;
         case "g":
         case "goto":
@@ -251,9 +319,13 @@ int main(string[] args)
         case "curRight":
             cursorRight(gb, command);
             break;
-        case "il":
-        case "insertLine":
-            insertLine(gb, command);
+        case "ila":
+        case "insertLineAbove":
+            insertLineAbove(gb, command);
+            break;
+        case "ilb":
+        case "insertLineBelow":
+            insertLineBelow(gb, command);
             break;
         case "lf":
         case "loadFile":

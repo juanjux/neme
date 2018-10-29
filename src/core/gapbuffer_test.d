@@ -1205,8 +1205,6 @@ debug
     // assert(gb.currentCol == 1);
     assert(cgb.currentCol == 1);
     assert(ngb.currentCol == 3);
-
-    // FIXME XXX test backwards too
 }
 
 // cursorToLine

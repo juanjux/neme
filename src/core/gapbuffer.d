@@ -515,8 +515,6 @@ struct GapBuffer
      */
     public @property @safe
     void cursorPos(GrpmIdx pos)
-    in { assert(pos >= 0.GrpmIdx); }
-    body
     {
         pos = min(pos, GrpmIdx(contentGrpmLen - 1));
 
@@ -534,9 +532,6 @@ struct GapBuffer
      */
     public @safe
     ImGrpmIdx cursorForward(GrpmCount count)
-    in { assert(count >= 0.GrpmCount); }
-    out(res) { assert(res >= 0); }
-    body
     {
         if (count <= 0 || buffer.length == 0 || gapEnd + 1 == buffer.length)
             return cursorPos;
