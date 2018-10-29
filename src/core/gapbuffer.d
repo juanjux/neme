@@ -611,11 +611,8 @@ struct GapBuffer
      */
     public @safe
     ImGrpmIdx deleteLeft(GrpmCount count)
-    in { assert(count >= 0.GrpmCount); }
-    out(res) { assert(res >= 0); }
-    body
     {
-        if (buffer.length == 0 || gapStart == 0)
+        if (buffer.length == 0 || gapStart == 0 || count == 0.GrpmCount)
             return cursorPos;
 
         ImGrpmCount actualToDelGrpm = min(count, contentBeforeGapGrpmLen);
@@ -642,11 +639,8 @@ struct GapBuffer
       */
     public @safe
     ImGrpmIdx deleteRight(GrpmCount count)
-    in { assert(count >= 0.GrpmCount); }
-    out(res) { assert(res >= 0); }
-    body
     {
-        if (buffer.length == 0 || gapEnd == buffer.length)
+        if (buffer.length == 0 || gapEnd == buffer.length || count == 0.GrpmCount)
             return cursorPos;
 
         ImGrpmCount actualToDelGrpm = min(count, contentAfterGapGrpmLen);

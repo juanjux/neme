@@ -95,7 +95,7 @@ void printBuffer(ref GapBuffer gb)
 }
 
 // pl line1,line2,line3...
-void printLines(ref GapBuffer gb, Command _)
+void printLines(ref GapBuffer gb, Command command)
 {
     command.params.each!(lineNum => writeln(gb.lineAt(lineNum.to!long)));
 }
@@ -246,14 +246,36 @@ void lineDown(ref GapBuffer gb, Command command)
     }
 }
 
+// dwl [numWords]
 void deleteWordLeft(ref GapBuffer gb, Command command)
 {
-    // XXX
+    auto count = command.params.length > 0 ? command.params[0].to!long : 1;
+    auto words = extractors.words(gb, gb.cursorPos, Direction.Back, count);
+    writeln(words);
+
+    if (words.length > 0) {
+        auto deleteStart = max((words[$-1].startPos - 1).GrpmIdx, 
+                                0.GrpmIdx);
+        auto deleteEnd = gb.cursorPos;
+        auto toDelete = max(deleteEnd - deleteStart, 1);
+        gb.deleteLeft(toDelete.to!GrpmCount);
+    }
 }
 
+// dwr [numWords]
 void deleteWordRight(ref GapBuffer gb, Command command)
 {
-    // XXX
+    auto count = command.params.length > 0 ? command.params[0].to!long : 1;
+    auto words = extractors.words(gb, gb.cursorPos, Direction.Front, count);
+    writeln(words);
+
+    if (words.length > 0) {
+        auto deleteStart = gb.cursorPos;
+        auto deleteEnd = max((words[$-1].endPos + 1).GrpmIdx, 
+                             0.GrpmIdx);
+        auto toDelete = max(deleteEnd - deleteStart, 1);
+        gb.deleteRight(toDelete.to!GrpmCount);
+    }
 }
 
 int main(string[] args)
@@ -269,11 +291,9 @@ int main(string[] args)
         gb = gapbuffer("");
     }
 
-
     foreach(line; stdin.byLine()) {
         auto command = parseCmdLine(line.to!string);
-
-        writeln(command);
+        // writeln(command);
 
         // FIXME: autogenerate at compile time
         switch(command.cmd)
