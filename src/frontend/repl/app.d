@@ -3,6 +3,7 @@ module neme.frontend.repl.app;
 import neme.core.gapbuffer: gapbuffer, GapBuffer, ArrayIdx;
 import neme.core.extractors;
 import neme.core.types;
+import extractors = neme.core.extractors;
 import std.array: array;
 
 import std.stdio;
@@ -142,8 +143,12 @@ void gotoLineCol(ref GapBuffer gb, Command command)
 {
     auto line = min(gb.numLines,
                     max(1, command.params[0].to!long));
-    auto col = min(gb.lineLength(line),
-                   GrpmIdx(max(1, command.params[1].to!long)));
+    GrpmIdx col;
+    if (command.params.length > 1) { 
+        col = min(gb.lineLength(line),
+                    GrpmIdx(max(1, command.params[1].to!long)));
+    } else
+        col = 1;
 
     gb.cursorPos = GrpmIdx(gb.lineStartPos(line) + col - 1);
     writeln(gb.cursorPos);
@@ -161,39 +166,85 @@ void cursorRight(ref GapBuffer gb, Command command)
     gb.cursorForward(command.params[0].to!long.to!GrpmCount);
 }
 
-void insertLine(ref GapBuffer gb, Command command)
+// ila
+void insertLineAbove(ref GapBuffer gb, Command command)
 {
-    // XXX
+    auto lines = extractors.lines(gb, gb.cursorPos, Direction.Back, 1);
+    if (lines.length > 0) {
+        gb.cursorPos = (lines[0].startPos - 1).GrpmIdx;
+        gb.addText("\n");
+    }
 }
 
+// ilb
+void insertLineBelow(ref GapBuffer gb, Command command)
+{
+    auto lines = extractors.lines(gb, gb.cursorPos, Direction.Front, 1);
+    if (lines.length > 0) {
+        gb.cursorPos = lines[0].endPos;
+        gb.addText("\n");
+    }
+}
+
+// YOLO error control but it doesn't matter since this crap is only for 
+// integration testing
 void loadFile(ref GapBuffer gb, Command command)
 {
-    // XXX
+    import std.file: readText;
+    gb.clear(readText(command.params[0]));
 }
 
+// Ditto
 void saveFile(ref GapBuffer gb, Command command)
 {
-    // XXX
+    import std.file: write;
+    write(command.params[0], gb.content.to!string);
 }
 
+// wl [numWords]
 void wordLeft(ref GapBuffer gb, Command command)
 {
-    // XXX
+    auto count = command.params.length > 0 ? command.params[0].to!long : 1;
+    auto words = extractors.words(gb, gb.cursorPos, Direction.Back, count);
+    writeln("XXXPrev: ", words);
+    if (words.length > 0) {
+        gb.cursorPos = (words[$-1].startPos - 1).GrpmIdx;
+        writeln(words);
+    }
 }
 
+// wr [numWords]
 void wordRight(ref GapBuffer gb, Command command)
 {
-    // XXX
+    auto count = command.params.length > 0 ? command.params[0].to!long : 1;
+    auto words = extractors.words(gb, gb.cursorPos, Direction.Front, count + 1);
+    if (words.length > 0) {
+        auto limit = words.length > 1 ? words.length - 1 : words.length;
+        gb.cursorPos = words.length > 1 ? words[$-1].startPos : words[$-1].endPos;
+        writeln(words[0..count]);
+    }
 }
 
+// lu [numLines]
 void lineUp(ref GapBuffer gb, Command command)
 {
-    // XXX
+    auto count = command.params.length > 0 ? command.params[0].to!long : 1;
+    auto lines = extractors.lines(gb, (gb.cursorPos - 1).GrpmIdx, Direction.Back, count);
+    if (lines.length > 0) {
+        gb.cursorPos = lines[$-1].startPos;
+        writeln(lines);
+    }
 }
 
+// ld [numLines]
 void lineDown(ref GapBuffer gb, Command command)
 {
-    // XXX
+    auto count = command.params.length > 0 ? command.params[0].to!long : 1;
+    auto lines = extractors.lines(gb, (gb.cursorPos).GrpmIdx, Direction.Front, count + 1);
+    if (lines.length > 0) {
+        gb.cursorPos = lines[$-1].startPos;
+        writeln(lines[0..count]);
+    }
 }
 
 void deleteWordLeft(ref GapBuffer gb, Command command)
@@ -268,9 +319,13 @@ int main(string[] args)
         case "curRight":
             cursorRight(gb, command);
             break;
-        case "il":
-        case "insertLine":
-            insertLine(gb, command);
+        case "ila":
+        case "insertLineAbove":
+            insertLineAbove(gb, command);
+            break;
+        case "ilb":
+        case "insertLineBelow":
+            insertLineBelow(gb, command);
             break;
         case "lf":
         case "loadFile":

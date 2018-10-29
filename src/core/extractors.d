@@ -15,13 +15,13 @@ const(Subject)[] lines(in GapBuffer gb, GrpmIdx startPos, Direction dir,
                        ArraySize count, Predicate predicate = &All)
 {
     const(Subject)[] lines;
-    auto goingForward = dir == Direction.Front;
-    ulong iterated = 0;
+    immutable goingForward = dir == Direction.Front;
+    ulong iterated;
 
     auto lineStartPos = gb.grpmPos2CPPos(startPos);
-    auto startLine = gb.lineNumAtPos(lineStartPos);
+    immutable startLine = gb.lineNumAtPos(lineStartPos);
     auto lineno = startLine;
-    auto limitFound = () => goingForward && lineno > gb.numLines || !goingForward && lineno < 1;
+    auto limitFound = () => (goingForward && lineno > gb.numLines) || (!goingForward && lineno < 1);
 
     while (iterated < count && !limitFound())
     {
@@ -42,9 +42,9 @@ public @safe
 const(Subject)[] words(in GapBuffer gb, GrpmIdx startPos, Direction dir,
                     ArraySize count, Predicate predicate = &All)
 {
-    import std.container.dlist;
+    import std.container.dlist: DList;
 
-    auto contentLen = gb.contentGrpmLen;
+    immutable contentLen = gb.contentGrpmLen;
     if (contentLen == 0)
         return [];
 
@@ -52,8 +52,8 @@ const(Subject)[] words(in GapBuffer gb, GrpmIdx startPos, Direction dir,
     auto pos = startPos;
     auto wordStartPos = pos;
     auto curWord = DList!BufferElement();
-    bool goingForward = (dir == Direction.Front);
-    ulong iterated = 0;
+    immutable goingForward = (dir == Direction.Front);
+    ulong iterated;
 
     void maybeAddWord() {
         GrpmIdx realStart, realEnd;
@@ -75,8 +75,8 @@ const(Subject)[] words(in GapBuffer gb, GrpmIdx startPos, Direction dir,
         curWord.clear();
     }
 
-    bool prevWasWordChar = false;
-    auto limitFound = () => goingForward && pos >= contentLen || !goingForward && pos < 0;
+    bool prevWasWordChar;
+    auto limitFound = () => (goingForward && pos >= contentLen) || (!goingForward && pos < 0);
 
     while (iterated < count) {
 
@@ -84,6 +84,8 @@ const(Subject)[] words(in GapBuffer gb, GrpmIdx startPos, Direction dir,
         bool isWordChar = true;
 
         foreach(BufferElement cp; curGrpm) {
+            // FIXME XXX: any sequence of wordSeparators started by a wordSeparator char is also a word
+            // until the first non separator or whitespace character
             if (cp in globalSettings.wordSeparators) {
                 isWordChar = false;
                 break;
