@@ -295,7 +295,7 @@ debug
 @safe unittest
 {
     dstring combtext = "r̈a⃑⊥ b⃑67890"; // 10 graphemes, 13 len
-    auto combtextGrpmLen = combtext.byGrapheme.count;
+    immutable combtextGrpmLen = combtext.byGrapheme.count;
 
     auto gb = gapbuffer(combtext, 10);
     assert(gb.hasCombiningGraphemes);
@@ -467,7 +467,7 @@ debug
     {
         auto gb = gapbuffer(txt, 50);
         // Deleting should recover space from the gap
-        auto prevCurSize = gb.currentGapSize;
+        immutable prevCurSize = gb.currentGapSize;
         gb.deleteRight(10.GrpmCount);
 
         assert(gb.currentGapSize == prevCurSize + txt.firstGraphemesSize(10.GrpmCount));
@@ -506,7 +506,7 @@ debug
     foreach(txt; [text, combtext])
     {
         auto gb = gapbuffer(txt, 50);
-        auto prevCurSize = gb.currentGapSize;
+        immutable prevCurSize = gb.currentGapSize;
         gb.cursorForward(10.GrpmCount);
         gb.deleteLeft(10.GrpmCount);
         assert(gb.currentGapSize == prevCurSize + txt.firstGraphemesSize(10.GrpmCount));
@@ -529,7 +529,7 @@ debug
         gb.cursorForward(5.GrpmCount);
         assert(gb.contentBeforeGap == txt.graphemeSlice(0.GrpmIdx, 5.GrpmIdx));
         assert(gb.contentAfterGap == "67890abc");
-        auto prevBufferLen = gb.buffer.length;
+        immutable prevBufferLen = gb.buffer.length;
 
         gb.configuredGapSize = 100;
         assert(gb.reallocCount == 1);
@@ -1064,7 +1064,7 @@ debug
 
     assert(cgb.lineArraySubject(4).text == "r̈a⃑⊥ b⃑");
 
-    auto numLinesPre = gb.numLines;
+    immutable numLinesPre = gb.numLines;
     gb.addText("another line\n");
     assert(gb.numLines == numLinesPre + 1);
     gb.addText("another line\n");

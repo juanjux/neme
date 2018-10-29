@@ -11,7 +11,7 @@ import neme.core.gapbuffer;
 version(none){
 private void bench_overlaps1(uint iterations)
 {
-    auto overlaps1_call = () => overlaps(0, 4, 2, 3);
+    immutable overlaps1_call = () => overlaps(0, 4, 2, 3);
     auto duration = benchmark!overlaps1_call(iterations);
     writeln("overlaps simple: ", to!Duration(duration[0]));
 }
@@ -23,7 +23,7 @@ private void bench_fill(uint iterations)
     import std.algorithm: fill;
     import std.array: replicate;
 
-    dchar[] a = null;
+    dchar[] a;
     dchar[] filler = ['-'];
 
     // no fill: 1.4 seconds. This wins for release builds.
@@ -220,9 +220,7 @@ private void benchProgrammingSessionCP(GBType)()
 
     enum iterations = 10;
 
-    auto editSessionSlow   = () => editSession(code, No.forceFastMode);
-    auto editSessionFast   = () => editSession(code, Yes.forceFastMode);
-    auto editSessionNoLoad = () => editSession(code, Yes.forceFastMode, No.doLoad);
+    immutable editSessionSlow = () => editSession(code, No.forceFastMode);
 
     Duration[1] duration = void;
 
@@ -281,9 +279,9 @@ void benchReallocations()
         }
     }
 
-    auto smallReallocs  = () => reallocations(smalltext);
-    auto mediumReallocs = () => reallocations(mediumtext);
-    auto bigReallocs    = () => reallocations(bigtext);
+    immutable smallReallocs  = () => reallocations(smalltext);
+    immutable mediumReallocs = () => reallocations(mediumtext);
+    immutable bigReallocs    = () => reallocations(bigtext);
 
     Duration[1] duration = void;
 
@@ -310,20 +308,17 @@ private void benchCurrentLine()
     enum code = import("fixtures/testbench_code_multicp.txt");
     auto gb = gapbuffer(code);
     gb.indexNewLines;
-    auto iterations = 1;
 
     void test1() {
-        ArrayIdx a;
         gb.cursorPos = 0.GrpmIdx;
-        for(uint i=0; i < 400_000; i++) {
+        for(uint i; i < 400_000; i++) {
             gb.cursorForward(1.GrpmCount);
             a = gb.currentLine;
         }
     }
     void test2() {
-        ArrayIdx a;
         gb.cursorPos = 0.GrpmIdx;
-        for(uint i=0; i < 400_000; i++) {
+        for(uint i; i < 400_000; i++) {
             gb.cursorForward(1.GrpmCount);
             a = gb.currentLine2;
         }
@@ -380,7 +375,6 @@ private void benchCurrentLineSerialVsParallel()
 
 void bench()
 {
-    auto g = gapbuffer;
     writeln("Programming sessions: ");
     benchProgrammingSessionCP!GapBuffer;
     writeln("\nReallocations: ");
@@ -388,9 +382,9 @@ void bench()
     //benchCurrentLineSerialVsParallel;
     //benchCurrentLine;
 
-    //uint iterations = 10_000_000;
-    //bench_overlaps1(iterations);
-    //bench_fill(iterations);
+    // uint iterations = 10_000_000;
+    // bench_overlaps1(iterations);
+    // bench_fill(iterations);
 
     //iterations = 100_000_000;
     //bench_cursorMovement(iterations);
