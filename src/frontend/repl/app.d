@@ -82,7 +82,7 @@ void error(Command command)
 void printBuffer(ref GapBuffer gb)
 {
     import std.string: splitLines, leftJustify;
-    import std.format;
+    import std.format: format;
 
     auto contentLines = gb.content.splitLines;
     auto lwidth = contentLines.length.to!string.length;
@@ -95,7 +95,7 @@ void printBuffer(ref GapBuffer gb)
 }
 
 // pl line1,line2,line3...
-void printLines(ref GapBuffer gb, Command command)
+void printLines(ref GapBuffer gb, Command _)
 {
     command.params.each!(lineNum => writeln(gb.lineAt(lineNum.to!long)));
 }
@@ -167,7 +167,7 @@ void cursorRight(ref GapBuffer gb, Command command)
 }
 
 // ila
-void insertLineAbove(ref GapBuffer gb, Command command)
+void insertLineAbove(ref GapBuffer gb, Command _)
 {
     auto lines = extractors.lines(gb, gb.cursorPos, Direction.Back, 1);
     if (lines.length > 0) {
@@ -177,7 +177,7 @@ void insertLineAbove(ref GapBuffer gb, Command command)
 }
 
 // ilb
-void insertLineBelow(ref GapBuffer gb, Command command)
+void insertLineBelow(ref GapBuffer gb, Command _)
 {
     auto lines = extractors.lines(gb, gb.cursorPos, Direction.Front, 1);
     if (lines.length > 0) {
@@ -196,7 +196,7 @@ void loadFile(ref GapBuffer gb, Command command)
 
 // Ditto
 void saveFile(ref GapBuffer gb, Command command)
-{
+{ 
     import std.file: write;
     write(command.params[0], gb.content.to!string);
 }
@@ -206,7 +206,7 @@ void wordLeft(ref GapBuffer gb, Command command)
 {
     auto count = command.params.length > 0 ? command.params[0].to!long : 1;
     auto words = extractors.words(gb, gb.cursorPos, Direction.Back, count);
-    writeln("XXXPrev: ", words);
+
     if (words.length > 0) {
         gb.cursorPos = (words[$-1].startPos - 1).GrpmIdx;
         writeln(words);
@@ -219,7 +219,6 @@ void wordRight(ref GapBuffer gb, Command command)
     auto count = command.params.length > 0 ? command.params[0].to!long : 1;
     auto words = extractors.words(gb, gb.cursorPos, Direction.Front, count + 1);
     if (words.length > 0) {
-        auto limit = words.length > 1 ? words.length - 1 : words.length;
         gb.cursorPos = words.length > 1 ? words[$-1].startPos : words[$-1].endPos;
         writeln(words[0..count]);
     }

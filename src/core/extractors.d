@@ -19,7 +19,7 @@ const(Subject)[] lines(in GapBuffer gb, GrpmIdx startPos, Direction dir,
     ulong iterated;
 
     auto lineStartPos = gb.grpmPos2CPPos(startPos);
-    immutable startLine = gb.lineNumAtPos(lineStartPos);
+    auto startLine = gb.lineNumAtPos(lineStartPos);
     auto lineno = startLine;
     auto limitFound = () => (goingForward && lineno > gb.numLines) || (!goingForward && lineno < 1);
 

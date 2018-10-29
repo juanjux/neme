@@ -97,6 +97,10 @@ import std.conv;
 }
 @safe unittest
 {
+
+}
+@safe unittest
+{
     auto gb = gapbuffer("", 10);
 
     auto res = extractors.words(gb, 0.GrpmIdx, Direction.Front, 2);
