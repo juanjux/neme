@@ -77,6 +77,7 @@ void error(Command command)
 
 // Commands implementation follow
 
+// pb (no params)
 void printBuffer(ref GapBuffer gb)
 {
     import std.string: splitLines, leftJustify;
@@ -92,18 +93,20 @@ void printBuffer(ref GapBuffer gb)
     writeln("Cursor position: line: ", gb.currentLine, " column: ", gb.currentCol);
 }
 
+// pl line1,line2,line3...
 void printLines(ref GapBuffer gb, Command command)
 {
     command.params.each!(lineNum => writeln(gb.lineAt(lineNum.to!long)));
 }
 
+// dl line1,line2,line3...
 void deleteLines(ref GapBuffer gb, Command command)
 {
     writeln("Deleting lines: ", command.params);
     gb.deleteLines(command.params.map!(to!ArrayIdx).array);
 }
 
-
+// ap :text to append at the end of the text
 void appendText(ref GapBuffer gb, Command command)
 {
     if (command.textParam.length == 0)
@@ -113,6 +116,7 @@ void appendText(ref GapBuffer gb, Command command)
     gb.addText(command.textParam);
 }
 
+// a :text to add at cursor position
 void addText(ref GapBuffer gb, Command command)
 {
     if (command.textParam.length == 0)
@@ -121,12 +125,19 @@ void addText(ref GapBuffer gb, Command command)
     gb.addText(command.textParam);
 }
 
-
-void deleteChars(ref GapBuffer gb, Command command)
+// dcl howmany
+void deleteCharsLeft(ref GapBuffer gb, Command command)
 {
-    // XXX
+    gb.deleteLeft(command.params[0].to!long.to!GrpmCount);
 }
 
+// dcr howmany
+void deleteCharsRight(ref GapBuffer gb, Command command)
+{
+    gb.deleteRight(command.params[0].to!long.to!GrpmCount);
+}
+
+// g line,col
 void gotoLineCol(ref GapBuffer gb, Command command)
 {
     auto line = min(gb.numLines,
@@ -134,18 +145,20 @@ void gotoLineCol(ref GapBuffer gb, Command command)
     auto col = min(gb.lineLength(line),
                    GrpmIdx(max(1, command.params[1].to!long)));
 
-    gb.cursorPos = GrpmIdx(gb.lineStartPos(line) + col);
+    gb.cursorPos = GrpmIdx(gb.lineStartPos(line) + col - 1);
     writeln(gb.cursorPos);
 }
 
+// l howmany
 void cursorLeft(ref GapBuffer gb, Command command)
 {
-    // XXX
+    gb.cursorBackward(command.params[0].to!long.to!GrpmCount);
 }
 
+// r howmany
 void cursorRight(ref GapBuffer gb, Command command)
 {
-    // XXX
+    gb.cursorForward(command.params[0].to!long.to!GrpmCount);
 }
 
 void insertLine(ref GapBuffer gb, Command command)
@@ -235,9 +248,13 @@ int main(string[] args)
         case "appendText":
             appendText(gb, command);
             break;
-        case "d":
-        case "deleteChars":
-            deleteChars(gb, command);
+        case "dcl":
+        case "deleteCharsLeft":
+            deleteCharsLeft(gb, command);
+            break;
+        case "dcr":
+        case "deleteCharsRight":
+            deleteCharsRight(gb, command);
             break;
         case "g":
         case "goto":
