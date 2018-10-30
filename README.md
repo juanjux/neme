@@ -23,3 +23,4 @@ For the moment I'm just toying around with different languages (currently D)
 and my short term plan is to implement a library with several text manipulation
 data structures (line list, gap buffer, a bastard son of both, etc) and another library on top of them
 implementing text-manipulation primitives.
+
