@@ -159,6 +159,7 @@ const(Subject)[] paragraphs(in GapBuffer gb, GrpmIdx startPos, Direction dir,
     auto maxLen = gb.length;
 
     foreach(ref p; parags) {
+        // Strip newlines and fix backward motion positions
         GrpmIdx start, end;
 
         if (p.startPos == 0)
@@ -170,15 +171,10 @@ const(Subject)[] paragraphs(in GapBuffer gb, GrpmIdx startPos, Direction dir,
 
         if (p.endPos >= maxLen)
             end = maxLen;
-        else if (dir == Direction.Back) {
+        else if (dir == Direction.Back)
             end = min((p.endPos + 1).GrpmIdx, gb.length);
-        }
-        else {
+        else
             end = p.endPos.to!long;
-        }
-
-        if (end > maxLen)
-            end = maxLen;
 
         endParags ~= Subject(start, end, p.text.strip);
     }

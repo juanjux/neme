@@ -51,6 +51,16 @@
             "sourcePaths": ["src/core", "src/frontend/repl"],
             "importPaths": ["src/core"],
             "excludedSourceFiles": ["src/app.d"]
+        },
+        {
+            "name": "tui",
+            "targetType": "executable",
+            "sourcePaths": ["src/core", "src/frontend/tui"],
+            "importPaths": ["src/core"],
+            "excludedSourceFiles": ["src/app.d"],
+            "dependencies": {
+                "nice-curses": "~>0.2.4"
+            }
         }
     ]
 }
