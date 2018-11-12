@@ -6,14 +6,90 @@ import neme.core.settings;
 import neme.core.types;
 
 import std.algorithm.comparison : min;
+import std.array: array;
+import std.container.dlist;
 import std.conv;
+import std.traits;
 import std.stdio;
 import std.array;
+
+
+/**
+ * Generic extractor function that servers for many kinds of Subjects. The isBoundary
+ * compile time parameter is a callable that will check if we've found the boundary of the
+ * current subject to add it to the list.
+ * That function or delegate should have the signature:
+ *
+ * bool isBoundary(DList!BufferElement, BufferType)
+ **/
+public @safe
+const(Subject)[] extract(alias isBoundary)
+    (in GapBuffer gb, GrpmIdx startPos, Direction dir, ArraySize count,
+     Predicate predicate = &All)
+if (isCallable!isBoundary)
+{
+    auto contentLen = gb.contentGrpmLen;
+    if (contentLen == 0) return [];
+
+    const(Subject)[] subjects; subjects.reserve(count);
+    auto pos = startPos;
+    auto subjectStartPos = pos;
+    auto curSubject = DList!BufferElement();
+    bool goingForward = (dir == Direction.Front);
+    ulong iterated = 0;
+
+    void maybeAdd() {
+        GrpmIdx realStart, realEnd;
+
+        if (goingForward) {
+            realStart = subjectStartPos;
+            realEnd = GrpmIdx(pos - 1);
+        } else {
+            realStart = GrpmIdx(pos + 1);
+            realEnd = subjectStartPos;
+        }
+
+        auto subject = Subject(realStart, realEnd, curSubject.array);
+        if (predicate(subject)) {
+            subjects ~= subject;
+            ++iterated;
+        }
+
+        curSubject.clear();
+    }
+
+    auto limitFound = () => goingForward && pos >= contentLen || !goingForward && pos < 0;
+
+    while (iterated < count) {
+
+        const(BufferType) curGrpm = gb[pos.to!long];
+        bool isWordChar = !isBoundary(curSubject, curGrpm);
+
+        if (isWordChar) {
+            if (curSubject.empty) // start of new word
+                subjectStartPos = pos;
+
+            goingForward ? curSubject.insertBack(curGrpm) : curSubject.insertFront(curGrpm);
+        } else if (!curSubject.empty)  // end of the word
+            maybeAdd;
+
+        goingForward ? ++pos : --pos;
+
+        if (limitFound()) {
+            if (isWordChar) maybeAdd;
+            break;
+        }
+    }
+
+    return subjects;
+}
 
 public @safe
 const(Subject)[] lines(in GapBuffer gb, GrpmIdx startPos, Direction dir,
                        ArraySize count, Predicate predicate = &All)
 {
+    if (gb.length == 0) return [];
+
     const(Subject)[] lines;
     immutable goingForward = dir == Direction.Front;
     ulong iterated;
@@ -39,46 +115,10 @@ const(Subject)[] lines(in GapBuffer gb, GrpmIdx startPos, Direction dir,
 
 public @safe
 const(Subject)[] words(in GapBuffer gb, GrpmIdx startPos, Direction dir,
-                    ArraySize count, Predicate predicate = &All)
+                       ArraySize count, Predicate predicate = &All)
 {
-    import std.container.dlist: DList;
-
-    immutable contentLen = gb.contentGrpmLen;
-    if (contentLen == 0)
-        return [];
-
-    const(Subject)[] words; words.reserve(count);
-    auto pos = startPos;
-    auto wordStartPos = pos;
-    auto curWord = DList!BufferElement();
-    immutable goingForward = (dir == Direction.Front);
-    ulong iterated;
-
-    void maybeAddWord() {
-        GrpmIdx realStart, realEnd;
-
-        if (goingForward) {
-            realStart = wordStartPos;
-            realEnd = GrpmIdx(pos - 1);
-        } else {
-            realStart = GrpmIdx(pos + 1);
-            realEnd = wordStartPos;
-        }
-
-        auto word = Subject(realStart, realEnd, curWord.array);
-        if (predicate(word)) {
-            words ~= word;
-            ++iterated;
-        }
-
-        curWord.clear();
-    }
-
-    bool prevWasWordChar;
-    auto limitFound = () => (goingForward && pos >= contentLen) || (!goingForward && pos < 0);
-
-    while (iterated < count) {
-        const(BufferType) curGrpm = gb[pos.to!long];
+    bool isBoundary(in DList!BufferElement loaded, in BufferType curGrpm)
+    {
         bool isWordChar = true;
 
         foreach(BufferElement cp; curGrpm) {
@@ -89,25 +129,19 @@ const(Subject)[] words(in GapBuffer gb, GrpmIdx startPos, Direction dir,
                 break;
             }
         }
-
-        if (isWordChar) {
-            goingForward ? curWord.insertBack(curGrpm) : curWord.insertFront(curGrpm);
-
-            if (!prevWasWordChar) // start of new word
-                wordStartPos = pos;
-        } else if (prevWasWordChar)  // end of the word
-            maybeAddWord;
-
-        goingForward ? ++pos : --pos;
-
-        if (limitFound()) {
-            if (isWordChar)
-                maybeAddWord;
-            break;
-        }
-
-        prevWasWordChar = isWordChar;
+        return !isWordChar;
     }
+    return extract!isBoundary(gb, startPos, dir, count, predicate);
+}
 
-    return words;
+
+public @safe
+const(Subject)[] paragraphs(in GapBuffer gb, GrpmIdx startPos, Direction dir,
+                            ArraySize count, Predicate predicate = &All)
+{
+    bool isBoundary(in DList!BufferElement loaded, in BufferType curGrpm)
+    {
+        return !loaded.empty && loaded.back == '\n' && curGrpm[0] == '\n';
+    }
+    return extract!isBoundary(gb, startPos, dir, count, predicate);
 }

@@ -2,6 +2,7 @@ module neme.core.types;
 
 import neme.core.gapbuffer: GapBuffer;
 
+import std.container.dlist;
 import std.conv: to;
 import std.format: format;
 import std.typecons: Typedef;
@@ -77,5 +78,6 @@ package struct ArraySubject
 alias Predicate = bool function(in Subject subject);
 
 // Extractors select one or more elements from the given position and direction
+@safe public
 alias Extractor = const(Subject)[] function(in GapBuffer gb, GrpmIdx startPos, Direction dir,
                                             ArraySize count, Predicate predicate);
