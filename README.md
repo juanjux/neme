@@ -23,3 +23,19 @@ For the moment I'm just toying around with different languages (currently D)
 and my short term plan is to implement a library with several text manipulation
 data structures (line list, gap buffer, a bastard son of both, etc) and another library on top of them
 implementing text-manipulation primitives.
+
+### Building
+
+Default build will create a `neme` binary that will run some benchmarks using
+low level methods over the GapBuffer and high level operations using text
+objects. If you want to build:
+
+```sh
+dub build
+```
+
+For the best performance use instead:
+
+```
+dub build --compiler=ldc2 --build=release --config=optimized
+```

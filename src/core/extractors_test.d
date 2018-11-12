@@ -97,6 +97,10 @@ import std.conv;
 }
 @safe unittest
 {
+
+}
+@safe unittest
+{
     auto gb = gapbuffer("", 10);
 
     auto res = extractors.words(gb, 0.GrpmIdx, Direction.Front, 2);
@@ -180,3 +184,12 @@ import std.conv;
     assert(res2[0] == res[1]);
     assert(res2[1] == res[0]);
 }
+
+// @safe unitTest
+// {
+//     string text = "  spacestarting word";
+//     auto gb = gapbuffer(text, 10);
+
+//     auto res = extractors.words(gb, 0.GrpmIdx, Direction.Front, 2);
+//     assert(res.length)
+// }

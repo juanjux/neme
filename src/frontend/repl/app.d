@@ -1,118 +1,19 @@
 module neme.frontend.repl.app;
 
 import neme.core.gapbuffer: gapbuffer, GapBuffer, ArrayIdx;
+import neme.core.extractors;
+import neme.core.types;
+import neme.frontend.repl.repl_lib;
+import extractors = neme.core.extractors;
 import std.array: array;
 
 import std.stdio;
 import std.conv: to;
 import std.algorithm.iteration: map, each;
+import std.algorithm.comparison : max, min;
 
 
-// Simple sed-like (but dumber) REPL interface. For benchmarks and integration tests.
-
-/* TODO:
- * 1. Read a commandline argument to load a file from the start.
- * 2. Commands:
- *  - go to line
- *  - move cursor left or right
- *  - add text at cursor position
- *  - add text at specific position
- *  - delete n characters from position
- *  - insert new line (optional: with text)
- *  - load and save file
- *  - move words left, right
- *  - move chars left, right
- *  - move lines up, down
- *  - delete words left, right
- *  - replace words left, right
- */
-
-
-void printBuffer(ref GapBuffer gb)
-{
-    import std.string: splitLines, leftJustify;
-    import std.format;
-
-    auto contentLines = gb.content.splitLines;
-    auto lwidth = contentLines.length.to!string.length;
-
-    foreach(idx, line; contentLines) {
-        writeln(leftJustify(format!"%d"(idx+1), lwidth), "| ", line);
-    }
-}
-
-
-struct Command
-{
-    string cmd;
-    string[] params;
-    string textParam;
-}
-
-
-Command parseLine(string line)
-{
-    import std.array: split, join;
-    import std.string: indexOf;
-
-    // Cmd format: cmd[param1,param2] [text]
-    // Param1 is usually the line number or the start of a range
-    Command c;
-    string[] tmpParams;
-
-    auto tokens = line.split(",");
-
-    if (tokens.length > 0) {
-        c.cmd = tokens[0].to!string;
-        tmpParams = tokens[1..$];
-    }
-
-    if (tmpParams.length > 1) {
-        tmpParams = to!(string[])(tmpParams[0..$]);
-
-        if (indexOf(tmpParams[$-1], ' ') != -1) {
-            auto subtokens = tmpParams[$-1].split(" ");
-            tmpParams[$-1] = subtokens[0];
-
-            if (subtokens.length > 0) {
-                c.textParam =  join(subtokens[1..$]).to!string;
-            }
-        }
-    }
-    c.params = tmpParams;
-    return c;
-}
-
-
-void error(Command command)
-{
-    writeln("Unkown command: ", command.cmd);
-}
-
-
-void printLines(GapBuffer gb, Command command)
-{
-    command.params.each!(a => writeln(gb.line(a.to!long)));
-}
-
-void deleteLines(GapBuffer gb, Command command)
-{
-    writeln("Deleting lines: ", command.params);
-    gb.deleteLines(command.params.map!(to!ArrayIdx).array);
-}
-
-
-void addText(GapBuffer gb, Command command)
-{
-    // XXX
-}
-
-
-void deleteText(GapBuffer bb, Command command)
-{
-    // XXX
-}
-
+// Simple sed-like REPL interface. For benchmarks and integration tests.
 
 int main(string[] args)
 {
@@ -127,12 +28,11 @@ int main(string[] args)
         gb = gapbuffer("");
     }
 
-
     foreach(line; stdin.byLine()) {
-        auto command = parseLine(line.to!string);
+        auto command = parseCmdLine(line.to!string);
+        // writeln(command);
 
-        writeln(command);
-        // XXX strip command
+        // FIXME: autogenerate at compile time
         switch(command.cmd)
         {
         case "p":
@@ -151,14 +51,75 @@ int main(string[] args)
         case "addText":
             addText(gb, command);
             break;
-        case "d":
-        case "deleteText":
-            deleteText(gb, command);
+        case "ap":
+        case "appendText":
+            appendText(gb, command);
+            break;
+        case "dcl":
+        case "deleteCharsLeft":
+            deleteCharsLeft(gb, command);
+            break;
+        case "dcr":
+        case "deleteCharsRight":
+            deleteCharsRight(gb, command);
+            break;
+        case "g":
+        case "goto":
+            gotoLineCol(gb, command);
+            break;
+        case "l":
+        case "curLeft":
+            cursorLeft(gb, command);
+            break;
+        case "r":
+        case "curRight":
+            cursorRight(gb, command);
+            break;
+        case "ila":
+        case "insertLineAbove":
+            insertLineAbove(gb, command);
+            break;
+        case "ilb":
+        case "insertLineBelow":
+            insertLineBelow(gb, command);
+            break;
+        case "lf":
+        case "loadFile":
+            loadFile(gb, command);
+            break;
+        case "sf":
+        case "saveFile":
+            saveFile(gb, command);
+            break;
+        case "wl":
+        case "wordLeft":
+            wordLeft(gb, command);
+            break;
+        case "wr":
+        case "wordRight":
+            wordRight(gb, command);
+            break;
+        case "lu":
+        case "lineUp":
+            lineUp(gb, command);
+            break;
+        case "ld":
+        case "lineDown":
+            lineDown(gb, command);
+            break;
+        case "dwl":
+        case "deleteWordLeft":
+            deleteWordLeft(gb, command);
+            break;
+        case "dwr":
+        case "deleteWordRight":
+            deleteWordRight(gb, command);
             break;
         case "q":
         case "quit":
             writeln("Bye!");
             return 0;
+
         default:
             error(command);
             break;

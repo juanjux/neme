@@ -11,6 +11,7 @@ import std.container.dlist;
 import std.conv;
 import std.traits;
 import std.stdio;
+import std.array;
 
 
 /**
@@ -90,13 +91,12 @@ const(Subject)[] lines(in GapBuffer gb, GrpmIdx startPos, Direction dir,
     if (gb.length == 0) return [];
 
     const(Subject)[] lines;
-    auto goingForward = dir == Direction.Front;
-    ulong iterated = 0;
+    immutable goingForward = dir == Direction.Front;
+    ulong iterated;
 
     auto lineStartPos = gb.grpmPos2CPPos(startPos);
-    auto startLine = gb.lineNumAtPos(lineStartPos);
-    auto lineno = startLine;
-    auto limitFound = () => goingForward && lineno > gb.numLines || !goingForward && lineno < 1;
+    auto lineno = gb.lineNumAtPos(lineStartPos);
+    auto limitFound = () => (goingForward && lineno > gb.numLines) || (!goingForward && lineno < 1);
 
     while (iterated < count && !limitFound())
     {
@@ -122,6 +122,8 @@ const(Subject)[] words(in GapBuffer gb, GrpmIdx startPos, Direction dir,
         bool isWordChar = true;
 
         foreach(BufferElement cp; curGrpm) {
+            // FIXME XXX: any sequence of wordSeparators started by a wordSeparator char is also a word
+            // until the first non separator or whitespace character
             if (cp in globalSettings.wordSeparators) {
                 isWordChar = false;
                 break;

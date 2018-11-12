@@ -5,17 +5,16 @@
 	],
 	"description": "Some day this will be an editor",
 	"copyright": "Copyright © 2017, Juan Jose Alvarez Martinez",
-	"license": "GPL3",
-	"version": "0.0.4",
+	"license": "GPL-3.0",
+	"version": "0.0.6",
 	"buildTypes": {},
 	"targetType": "executable",
 	"mainSourceFile": "src/app.d",
         "importPaths": ["src", "src/core"],
-        "sourcePaths": ["src", "src/core"],
         "stringImportPaths": ["src/core"],
 	"subPackages": [],
-	"excludedSourceFiles": ["src/core/discarded.d", "src/core/exploratory/*",
-	                        "src/frontend/repl/app.d"],
+    "excludedSourceFiles": ["src/core/discarded.d", "src/core/exploratory/*",
+        "src/frontend/repl/app.d"],
 	"configurations": [
         { 
             "name": "debug"
@@ -39,8 +38,7 @@
             "name": "optimized",
             "targetType": "executable",
             "dflags": [
-                "-O3", 
-                "-mcpu=skylake"
+                "-O3"
             ]
         },
         {
@@ -52,7 +50,7 @@
             "targetType": "executable",
             "sourcePaths": ["src/core", "src/frontend/repl"],
             "importPaths": ["src/core"],
-            "excludedSourceFiles": ["src/app.d"],
+            "excludedSourceFiles": ["src/app.d"]
         }
     ]
 }
