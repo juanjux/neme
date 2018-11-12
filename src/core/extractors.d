@@ -156,8 +156,31 @@ const(Subject)[] paragraphs(in GapBuffer gb, GrpmIdx startPos, Direction dir,
     const(Subject)[] endParags;
     endParags.reserve(parags.length);
 
+    auto maxLen = gb.length;
+
     foreach(ref p; parags) {
-        endParags ~= Subject(p.startPos, p.endPos, p.text.strip);
+        GrpmIdx start, end;
+
+        if (p.startPos == 0)
+            start = 0;
+        else if (dir == Direction.Back)
+            start = min((p.startPos + 1).GrpmIdx, gb.length);
+        else
+            start = p.startPos.to!long;
+
+        if (p.endPos >= maxLen)
+            end = maxLen;
+        else if (dir == Direction.Back) {
+            end = min((p.endPos + 1).GrpmIdx, gb.length);
+        }
+        else {
+            end = p.endPos.to!long;
+        }
+
+        if (end > maxLen)
+            end = maxLen;
+
+        endParags ~= Subject(start, end, p.text.strip);
     }
 
     return endParags;

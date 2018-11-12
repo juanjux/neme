@@ -192,16 +192,16 @@ unittest
 
     string first = "This is a\nparagraph that finishes\nin a dobule line end.";
     string second = "This is the\nnext paragraph\nthat also finishes.";
-    string third = "Third paragraph\nwithout double line end";
+    string third = "Third paragraph finishes\nwith the end of file.";
     string text = first ~ "\n\n" ~ second ~ "\n\n" ~ third;
 
     auto gb = gapbuffer(text, 10);
     auto res = extractors.paragraphs(gb, 0.GrpmIdx, Direction.Front, 10);
-    writeln(res);
     assert(res.length == 3);
+    writeln(res);
     assert(res[0] == Subject(0.GrpmIdx, 55.GrpmIdx, first.to!BufferType));
     assert(res[1] == Subject(57.GrpmIdx, 103.GrpmIdx, second.to!BufferType));
-    assert(res[2] == Subject(105.GrpmIdx, 143.GrpmIdx, third.to!BufferType));
+    assert(res[2] == Subject(105.GrpmIdx, 150.GrpmIdx, third.to!BufferType));
 }
 
 unittest
@@ -210,13 +210,14 @@ unittest
 
     string first = "This is a\nparagraph that finishes\nin a double line end.";
     string second = "This is the\nnext paragraph\nthat also finishes.";
-    string third = "Third paragraph\nwithout double line end";
+    string third = "Third paragraph finishes\nwith the end of file.";
     string text = first ~ "\n\n" ~ second ~ "\n\n" ~ third;
 
     auto gb = gapbuffer(text, 10);
     auto res = extractors.paragraphs(gb, (gb.length - 1).GrpmIdx, Direction.Back, 10);
     assert(res.length == 3);
-    assert(res[0] == Subject(104.GrpmIdx, 143.GrpmIdx, third.to!BufferType));
-    assert(res[1] == Subject(56.GrpmIdx, 102.GrpmIdx, second.to!BufferType));
-    assert(res[2] == Subject(0.GrpmIdx, 54.GrpmIdx, first.to!BufferType));
+    writeln(res);
+    assert(res[0] == Subject(105.GrpmIdx, 151.GrpmIdx, third.to!BufferType));
+    assert(res[1] == Subject(57.GrpmIdx, 103.GrpmIdx, second.to!BufferType));
+    assert(res[2] == Subject(0.GrpmIdx, 55.GrpmIdx, first.to!BufferType));
 }
