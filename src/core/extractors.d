@@ -61,7 +61,6 @@ if (isCallable!isBoundary)
     auto limitFound = () => goingForward && pos >= contentLen || !goingForward && pos < 0;
 
     while (iterated < count) {
-
         const(BufferType) curGrpm = gb[pos.to!long];
         bool isWordChar = !isBoundary(curSubject, curGrpm);
 
@@ -84,6 +83,8 @@ if (isCallable!isBoundary)
     return subjects;
 }
 
+// Lines extractor doesn't use the generic extractor because the GapBuffer already
+// can provide precise line information with lineNumAtPos and lineArraysubject
 public @safe
 const(Subject)[] lines(in GapBuffer gb, GrpmIdx startPos, Direction dir,
                        ArraySize count, Predicate predicate = &All)
@@ -131,6 +132,7 @@ const(Subject)[] words(in GapBuffer gb, GrpmIdx startPos, Direction dir,
         }
         return !isWordChar;
     }
+
     return extract!isBoundary(gb, startPos, dir, count, predicate);
 }
 
@@ -139,9 +141,24 @@ public @safe
 const(Subject)[] paragraphs(in GapBuffer gb, GrpmIdx startPos, Direction dir,
                             ArraySize count, Predicate predicate = &All)
 {
+    import std.string: strip;
+
     bool isBoundary(in DList!BufferElement loaded, in BufferType curGrpm)
     {
-        return !loaded.empty && loaded.back == '\n' && curGrpm[0] == '\n';
+        if (dir == Direction.Front) {
+            return !loaded.empty && (loaded.back == '\n' && curGrpm[0] == '\n');
+        }
+        return !loaded.empty && (loaded.front == '\n' && curGrpm[0] == '\n');
     }
-    return extract!isBoundary(gb, startPos, dir, count, predicate);
+
+    // Clean up \n at the start and end of paragraphs
+    auto parags = extract!isBoundary(gb, startPos, dir, count, predicate);
+    const(Subject)[] endParags;
+    endParags.reserve(parags.length);
+
+    foreach(ref p; parags) {
+        endParags ~= Subject(p.startPos, p.endPos, p.text.strip);
+    }
+
+    return endParags;
 }

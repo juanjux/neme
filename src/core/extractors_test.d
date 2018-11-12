@@ -185,11 +185,38 @@ import std.conv;
     assert(res2[1] == res[0]);
 }
 
-// @safe unitTest
-// {
-//     string text = "  spacestarting word";
-//     auto gb = gapbuffer(text, 10);
+// paragraphs
+unittest
+{
+    import std.array: replace;
 
-//     auto res = extractors.words(gb, 0.GrpmIdx, Direction.Front, 2);
-//     assert(res.length)
-// }
+    string first = "This is a\nparagraph that finishes\nin a dobule line end.";
+    string second = "This is the\nnext paragraph\nthat also finishes.";
+    string third = "Third paragraph\nwithout double line end";
+    string text = first ~ "\n\n" ~ second ~ "\n\n" ~ third;
+
+    auto gb = gapbuffer(text, 10);
+    auto res = extractors.paragraphs(gb, 0.GrpmIdx, Direction.Front, 10);
+    writeln(res);
+    assert(res.length == 3);
+    assert(res[0] == Subject(0.GrpmIdx, 55.GrpmIdx, first.to!BufferType));
+    assert(res[1] == Subject(57.GrpmIdx, 103.GrpmIdx, second.to!BufferType));
+    assert(res[2] == Subject(105.GrpmIdx, 143.GrpmIdx, third.to!BufferType));
+}
+
+unittest
+{
+    import std.array: replace;
+
+    string first = "This is a\nparagraph that finishes\nin a double line end.";
+    string second = "This is the\nnext paragraph\nthat also finishes.";
+    string third = "Third paragraph\nwithout double line end";
+    string text = first ~ "\n\n" ~ second ~ "\n\n" ~ third;
+
+    auto gb = gapbuffer(text, 10);
+    auto res = extractors.paragraphs(gb, (gb.length - 1).GrpmIdx, Direction.Back, 10);
+    assert(res.length == 3);
+    assert(res[0] == Subject(104.GrpmIdx, 143.GrpmIdx, third.to!BufferType));
+    assert(res[1] == Subject(56.GrpmIdx, 102.GrpmIdx, second.to!BufferType));
+    assert(res[2] == Subject(0.GrpmIdx, 54.GrpmIdx, first.to!BufferType));
+}
