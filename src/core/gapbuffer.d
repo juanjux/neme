@@ -253,10 +253,10 @@ struct GapBuffer
     ArrayIdx idxDiffUntilGrapheme(ArrayIdx idx, GrpmCount numGraphemes, Direction dir) const
     {
         // fast path
-        if (_forceFastMode || !hasCombiningGraphemes) 
+        if (_forceFastMode || !hasCombiningGraphemes)
             return numGraphemes.to!ArrayIdx;
 
-        if (numGraphemes == 0u) 
+        if (numGraphemes == 0u)
             return ArrayIdx(0);
 
         ArrayIdx charCount;
@@ -332,7 +332,7 @@ struct GapBuffer
 
         noGapPos = max(0, noGapPos);
 
-        if (_forceFastMode || !hasCombiningGraphemes) 
+        if (_forceFastMode || !hasCombiningGraphemes)
             return GrpmIdx(min(contentCPLen - 1, noGapPos));
 
         // slow path
@@ -389,6 +389,12 @@ struct GapBuffer
             write("^");
         }
         writeln;
+    }
+
+    public pure nothrow @property @safe
+    bool empty() const
+    {
+        return contentCPLen == 0;
     }
 
     /**
@@ -495,8 +501,8 @@ struct GapBuffer
     public pure nothrow @property @safe
     GrpmIdx cursorPos() const
     {
-        return max(0.GrpmIdx, 
-                min(GrpmIdx(contentBeforeGapGrpmLen), 
+        return max(0.GrpmIdx,
+                min(GrpmIdx(contentBeforeGapGrpmLen),
                     GrpmIdx(contentGrpmLen - 1)
                 )
         );
@@ -952,7 +958,7 @@ struct GapBuffer
             return 0.GrpmIdx;
         }
 
-        if (_newLines.length <= linenum) 
+        if (_newLines.length <= linenum)
             // last line
             return (contentGrpmLen - 1).GrpmIdx;
 

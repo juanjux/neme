@@ -1,8 +1,15 @@
 module neme.frontend.tui.app;
 
+import neme.core.gapbuffer;
+
 import std.stdio;
-import std.file: readText;
+import std.conv: to;
+import std.algorithm;
+import std.format;
+
 import nice.ui.elements;
+import deimos.ncurses;
+
 
 int main(string[] args)
 {
@@ -12,9 +19,14 @@ int main(string[] args)
     };
 
     auto curses = new Curses(cfg);
-    scope(exit) destroy(curses);
-    auto scr = curses.stdscr;
+    WINDOW* textPad = null;
 
+    scope(exit) {
+        destroy(curses);
+        delwin(textPad);
+    }
+
+    auto scr = curses.stdscr;
     auto ui = new UI(curses, scr);
 
     Button.Config buttonCfg = { alignment: Align.left };
@@ -25,7 +37,6 @@ int main(string[] args)
     // Textbox holds both the text and the linecol
     auto textBox = scr.subwin(scr.height - 4, scr.width - 2, 2, 1);
     auto lineCol = textBox.subwin(textBox.height, 4, 2, 1);
-    auto textArea = scr.subwin(textBox.height, textBox.width - 6, 2, 6);
 
     // Status bar parent Window
     auto statusY = scr.height - 2;
@@ -50,16 +61,25 @@ int main(string[] args)
     auto x = true; // FIXME: workaround for "code not reachable" remove
     bool borderDrawn = false;
 
-    string loadedText;
+    bool mustLoadText;
+    int currentLine;
+    ulong numLines;
+    GapBuffer gb;
 
     void updateStatusBar()
     {
+        ulong maxLines, curLineLength, curCol, maxCol;
+
+        if (!gb.empty) {
+            curCol = 0; // FIXME: Change when allowing cursor movement
+            maxCol = gb.lineAt(gb.currentLine).length;
+        }
+
         statusMode.insert("COMMAND MODE | ");
         statusFile.insert("./LICENSE | ");
-        statusLine.insert("Ln 1/83 | ");
-        statusCol.insert("Col 1/80");
+        statusLine.insert(format!"Ln %d/%d | "(currentLine + 1, numLines + 1));
+        statusCol.insert(format!"Col %d/%d"(curCol + 1, maxCol + 1));
         cmdLine.insert("CMD: _____");
-
 
         statusMode.refresh;
         statusFile.refresh;
@@ -68,14 +88,8 @@ int main(string[] args)
         cmdLine.refresh;
     }
 
-    while(x) {
-        ui.draw;
-
-        if (loadedText.length > 0) {
-            textArea.insert(1, 0, loadedText);
-        }
-
-        updateStatusBar;
+    void updateWindowBorders()
+    {
         lineCol.box('|', '-');
         textBox.box('|', '-');
         scr.box('|', '-');
@@ -84,6 +98,43 @@ int main(string[] args)
         textBox.refresh;
         statusBar.refresh;
         scr.refresh;
+    }
+
+    void displayNewText()
+    {
+        import std.string: splitLines, toStringz;
+        import core.stdc.stdlib: free;
+
+        if (textPad != null)
+            delwin(textPad);
+
+        numLines = gb.numLines;
+        ulong maxLength;
+
+        for(ulong idx; idx < numLines; idx++) {
+            maxLength = max(maxLength, gb.lineAt(idx).length);
+        }
+
+        textPad = newpad(numLines.to!int, maxLength.to!int);
+        wprintw(textPad, gb.content.to!string.toStringz);
+        mustLoadText = false;
+    }
+
+    void updatePad()
+    {
+        if (mustLoadText)
+            displayNewText;
+
+        pnoutrefresh(textPad, currentLine,0, 3,6, textBox.height,textBox.width - 6);
+    }
+
+    // Main loop
+    while(x) {
+        ui.draw;
+
+        updateStatusBar;
+        updateWindowBorders;
+        updatePad;
 
         curses.update;
         WChar k = scr.getwch();
@@ -92,13 +143,17 @@ int main(string[] args)
             ui.keystroke(k);
         } catch(Button.Signal s) {
             if (s.sender == loadButton) {
-                loadedText = readText("LICENSE");
+                import std.file: readText;
+                gb = gapbuffer(readText("LICENSE"));
+                mustLoadText = true;
             }
             else if (s.sender == downButton) {
-                textArea.scroll(1);
+                currentLine = min(numLines - 1, currentLine + 1);
+                gb.cursorToLine(currentLine + 1);
             }
             else if (s.sender == upButton) {
-                textArea.scroll(-1);
+                currentLine = max(0, currentLine - 1);
+                gb.cursorToLine(currentLine + 1);
             }
         }
     }

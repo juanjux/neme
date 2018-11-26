@@ -50,7 +50,6 @@ public struct Subject
 }
 
 // Internal Subject using array positions. Public API will use types.Subject instead.
-// FIXME: method to convert to Subject
 package struct ArraySubject
 {
     // Position of the first codepoint of the subject
