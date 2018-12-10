@@ -1,15 +1,65 @@
 module neme.frontend.tui.app;
 
 import neme.core.gapbuffer;
+import extractors = neme.core.extractors;
 
 import std.stdio;
 import std.conv: to;
 import std.algorithm;
 import std.format;
+import std.file;
+import std.string;
+import std.datetime.stopwatch;
 
 import nice.ui.elements;
 import deimos.ncurses;
 
+enum BENCHMARK = true;
+
+struct BenchData
+{
+    StopWatch scrRefreshSw = StopWatch(AutoStart.no);
+    Duration scrTotalRefresh;
+    ulong scrNumTimesRefresh;
+    string benchFileName;
+    bool enabled = true;
+
+    this(string benchFile)
+    {
+        this.benchFileName = benchFile;
+    }
+
+    void startScreenRefresh()
+    {
+        if (!enabled) return;
+        scrRefreshSw.start;
+    }
+
+    void stopScreenRefresh()
+    {
+        if (!enabled) return;
+        scrRefreshSw.stop;
+        scrRefreshTick;
+    }
+
+    void scrRefreshTick()
+    {
+        if (!enabled) return;
+        append(benchFileName, "Screen refresh time: " ~
+                scrRefreshSw.peek.total!"usecs".to!string ~ "\n");
+        scrTotalRefresh += scrRefreshSw.peek;
+        ++scrNumTimesRefresh;
+        scrRefreshSw.reset();
+    }
+
+    void scrRefreshWriteMean()
+    {
+        if (!enabled) return;
+        auto mean = scrTotalRefresh / scrNumTimesRefresh;
+        append(benchFileName, "Average screen refresh time: " ~ 
+               mean.to!string ~ "\n");
+    }
+}
 
 int main(string[] args)
 {
@@ -18,12 +68,17 @@ int main(string[] args)
         cursLevel: 0
     };
 
+    auto benchData = BenchData("bench.txt");
+    benchData.enabled = BENCHMARK;
     auto curses = new Curses(cfg);
-    WINDOW* textPad = null;
+    WINDOW* textPad;
 
     scope(exit) {
-        destroy(curses);
+        // FIXME: ensure this runs also on Control+c
+        benchData.scrRefreshWriteMean;
         delwin(textPad);
+        destroy(curses);
+        writeln("bye!");
     }
 
     auto scr = curses.stdscr;
@@ -33,6 +88,7 @@ int main(string[] args)
     auto loadButton = new Button(ui, 1, 5, 1, 1, "Load", buttonCfg);
     auto downButton = new Button(ui, 1, 6, 1, 6, "Down", buttonCfg);
     auto upButton = new Button(ui, 1, 4, 1, 11, "Up", buttonCfg);
+    auto exitButton = new Button(ui, 1, 6, 1, 14, "Exit", buttonCfg);
 
     // Textbox holds both the text and the linecol
     auto textBox = scr.subwin(scr.height - 4, scr.width - 2, 2, 1);
@@ -57,9 +113,6 @@ int main(string[] args)
 
     auto cmdLineWidth = scr.width / 4;
     auto cmdLine = statusBar.subwin(1, cmdLineWidth, statusY, scr.width - cmdLineWidth - 5);
-
-    auto x = true; // FIXME: workaround for "code not reachable" remove
-    bool borderDrawn = false;
 
     bool mustLoadText;
     int currentLine;
@@ -102,7 +155,7 @@ int main(string[] args)
 
     void displayNewText()
     {
-        import std.string: splitLines, toStringz;
+        // Use wclear(textPad) instead of delete/recreate?
         import core.stdc.stdlib: free;
 
         if (textPad != null)
@@ -125,18 +178,29 @@ int main(string[] args)
         if (mustLoadText)
             displayNewText;
 
-        pnoutrefresh(textPad, currentLine,0, 3,6, textBox.height,textBox.width - 6);
+        if (gb.length <= 0) return;
+
+        auto startPos = gb.cursorPos;
+        auto lines = extractors.lines(gb, startPos, Direction.Front, textBox.height - 1);
+        auto endPos = gb.lineStartPos(gb.currentLine + lines.length + 1);
+
+        auto numDisplayLines = min(numLines, textBox.height - 1);
+        wclear(textPad);
+        wprintw(textPad, gb[startPos..endPos].to!string.toStringz);
+        pnoutrefresh(textPad, 0,0, 3,6, textBox.height,textBox.width - 6);
     }
 
     // Main loop
-    while(x) {
+    while(true) {
         ui.draw;
 
+        benchData.startScreenRefresh;
         updateStatusBar;
         updateWindowBorders;
         updatePad;
-
         curses.update;
+        benchData.stopScreenRefresh;
+
         WChar k = scr.getwch();
 
         try {
@@ -154,6 +218,9 @@ int main(string[] args)
             else if (s.sender == upButton) {
                 currentLine = max(0, currentLine - 1);
                 gb.cursorToLine(currentLine + 1);
+            }
+            else if (s.sender == exitButton) {
+                break;
             }
         }
     }
