@@ -56,7 +56,7 @@ struct BenchData
     {
         if (!enabled) return;
         auto mean = scrTotalRefresh / scrNumTimesRefresh;
-        append(benchFileName, "Average screen refresh time: " ~ 
+        append(benchFileName, "Average screen refresh time: " ~
                mean.to!string ~ "\n");
     }
 }
@@ -147,9 +147,9 @@ int main(string[] args)
     void fillText(GrpmIdx startPos)
     {
         auto curLine = 0;
-        auto lines = extractors.lines(gb, startPos, Direction.Front, 
+        auto lines = extractors.lines(gb, startPos, Direction.Front,
                                       textAreaLines - 1);
-                                    
+
         foreach(ref line; lines) {
             textArea.addstr(curLine, 0, line.text);
             ++curLine;
