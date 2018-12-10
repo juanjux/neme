@@ -2,9 +2,9 @@
 
 ![idiotez](https://i.imgflip.com/1le4it.jpg)
 
-I've just started to work on this so there isn't really nothing usable 
-(but hey, I've a nice [gap buffer implementation](https://github.com/juanjux/neme/blob/master/source/core/gapbuffer.d) 
-in D!).
+There isn't really nothing usable as a text editor yet here
+(but I've a nice [gap buffer implementation](https://github.com/juanjux/neme/blob/master/src/core/gapbuffer.d) 
+in D).
 
 The World Domination Plan for this repo is to contain the Neme text editor 
 (Neme = NEw Modal Editor). As the name implies, I'm going to explore 
@@ -19,10 +19,8 @@ was designed for [another keyboard](https://en.wikipedia.org/wiki/Vi#/media/File
 and requirements and environments that are pretty different from what we 
 use today.
 
-For the moment I'm just toying around with different languages (currently D) 
-and my short term plan is to implement a library with several text manipulation
-data structures (line list, gap buffer, a bastard son of both, etc) and another library on top of them
-implementing text-manipulation primitives.
+The current status of this project already provides a very performant and feature complete [gapbuffer](https://en.wikipedia.org/wiki/Gap_buffer), a simple "ed-like" line text editor (used mostly for integration testing)
+and work is ongoing to a ncurses TUI. Eventually I would also like to provide a graphical user interface.
 
 ### Building
 
