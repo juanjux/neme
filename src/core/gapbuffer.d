@@ -969,6 +969,9 @@ struct GapBuffer
     public @safe @property
     long currentCol() const
     {
+        if (!contentCPLen || !numLines) {
+            return 0L;
+        }
         // Special case: if the cursor is on a \n, col is always 1
         if (this[cursorPos.to!ulong] == "\n")
             return 1;
