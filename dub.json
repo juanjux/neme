@@ -65,7 +65,7 @@
             "name": "tui",
             "targetType": "executable",
             "sourcePaths": ["src/core", "src/frontend/tui"],
-            "importPaths": ["src/core", "nice/ui"],
+            "importPaths": ["src/core"],
             "excludedSourceFiles": ["src/app.d"],
             "dependencies": {
                 "nice-curses": "~>0.2.4",

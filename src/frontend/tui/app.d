@@ -7,22 +7,24 @@ import neme.core.types;
 import std.algorithm;
 import std.conv: to;
 import std.file;
+import core.stdc.stdlib: exit;
 import std.format;
 import std.stdio;
 import std.datetime.stopwatch;
+import std.experimental.logger;
 
 import nice.ui.elements;
-import deimos.ncurses;
+// import deimos.ncurses;
 
-enum BENCHMARK = true;
+enum BENCHMARK = false;
 
+version(BENCHMARK)
 struct BenchData
 {
     StopWatch scrRefreshSw = StopWatch(AutoStart.no);
     Duration scrTotalRefresh;
     ulong scrNumTimesRefresh;
     string benchFileName;
-    bool enabled = true;
 
     this(string benchFile)
     {
@@ -31,20 +33,17 @@ struct BenchData
 
     void startScreenRefresh()
     {
-        if (!enabled) return;
         scrRefreshSw.start;
     }
 
     void stopScreenRefresh()
     {
-        if (!enabled) return;
         scrRefreshSw.stop;
         scrRefreshTick;
     }
 
     void scrRefreshTick()
     {
-        if (!enabled) return;
         append(benchFileName, "Screen refresh time: " ~
                 scrRefreshSw.peek.total!"usecs".to!string ~ "\n");
         scrTotalRefresh += scrRefreshSw.peek;
@@ -54,7 +53,6 @@ struct BenchData
 
     void scrRefreshWriteMean()
     {
-        if (!enabled) return;
         auto mean = scrTotalRefresh / scrNumTimesRefresh;
         append(benchFileName, "Average screen refresh time: " ~
                mean.to!string ~ "\n");
@@ -68,15 +66,15 @@ int main(string[] args)
         cursLevel: 0
     };
 
-    BenchData benchData = BenchData("bench.txt");
-    benchData.enabled = BENCHMARK;
+    version(BENCHMARK)
+        immutable benchData = BenchData("bench.txt");
     auto curses = new Curses(cfg);
 
-    scope(exit) {
-        // FIXME: ensure this runs also on Control+c
-        benchData.scrRefreshWriteMean;
-        destroy(curses);
-        writeln("bye!");
+    void debugExit(string text, int code)
+    {
+        // destroy(curses);
+        // writeln(text);
+        // exit(code);
     }
 
     append("bench.txt", "Starting benchmark----\n");
@@ -86,9 +84,13 @@ int main(string[] args)
 
     Button.Config buttonCfg = { alignment: Align.left };
     auto loadButton = new Button(ui, 1, 5, 1, 1, "Load", buttonCfg);
-    auto downButton = new Button(ui, 1, 6, 1, 6, "Down", buttonCfg);
-    auto upButton = new Button(ui, 1, 4, 1, 11, "Up", buttonCfg);
-    auto exitButton = new Button(ui, 1, 6, 1, 14, "Exit", buttonCfg);
+    auto downButton = new Button(ui, 1, 5, 1, 6, "Down", buttonCfg);
+    auto upButton = new Button(ui, 1, 3, 1, 11, "Up", buttonCfg);
+    auto pageDownButton = new Button(ui, 1, 7, 1, 14, "PageDw", buttonCfg);
+    auto pageUpButton = new Button(ui, 1, 7, 1, 21, "PageUp", buttonCfg);
+    auto exitButton = new Button(ui, 1, 5, 1, 28, "Exit", buttonCfg);
+    auto curLeftButton = new Button(ui, 1, 5, 1, 33, "Left", buttonCfg);
+    auto curRightButton = new Button(ui, 1, 6, 1, 38, "Right", buttonCfg);
 
     // Textbox holds both the text and the linecol
     auto textBox = scr.subwin(scr.height - 4, scr.width - 2, 2, 1);
@@ -122,6 +124,19 @@ int main(string[] args)
     ulong numLines;
     GapBuffer gb;
 
+    // XXX: move up
+    scope(exit) {
+        // FIXME: ensure this runs also on Control+c
+        version(BENCHMARK)
+            benchData.scrRefreshWriteMean;
+        // XXX
+        // debugExit("Bye!", 0);
+        debugExit(textBox.curY.to!string ~ " " ~
+            textBox.curX.to!string ~ " CurrentLine: " ~
+            currentLine.to!string ~ " TextAreaLines: " ~
+            textAreaLines.to!string, 0);
+    }
+
     void updateStatusBar()
     {
         ulong maxLines, curLineLength, curCol, maxCol;
@@ -147,11 +162,36 @@ int main(string[] args)
     void fillText(GrpmIdx startPos)
     {
         auto curLine = 0;
+        auto gbCurLine = gb.currentLine;
+        auto gbCurCol = gb.currentCol.to!int;
+        auto gbStartPosLine = gb.lineNumAtPos(startPos.to!long);
         auto lines = extractors.lines(gb, startPos, Direction.Front,
                                       textAreaLines - 1);
 
         foreach(ref line; lines) {
-            textArea.addstr(curLine, 0, line.text);
+            if ((gbStartPosLine + curLine) == gbCurLine) {
+                // Current line: draw cursor
+                switch (line.text.length) {
+                    case 0:
+                        textArea.addch(curLine, 0, ' ', Attr.reverse);
+                        break;
+                    case 1:
+                        textArea.addstr(curLine, 0, line.text, Attr.reverse);
+                        break;
+                    default:
+                        if (gbCurCol == 1) {
+                            textArea.addch(curLine, 0, line.text[0], Attr.reverse);
+                            textArea.addstr(curLine, 1, line.text[1..$]);
+                        } else {
+                            textArea.addstr(curLine, 0, line.text[0..gbCurCol - 1]);
+                            textArea.addch(curLine, gbCurCol, line.text[gbCurCol], Attr.reverse);
+                            textArea.addstr(curLine, gbCurCol+1, line.text[gbCurCol+1..$]);
+                        }
+                        break;
+                }
+            } else {
+                textArea.addstr(curLine, 0, line.text);
+            }
             ++curLine;
         }
     }
@@ -179,10 +219,16 @@ int main(string[] args)
         scr.box('|', '-');
     }
 
+    void updateCursor()
+    {
+        auto viewCursorPos = (currentLine % textAreaLines) + 4;
+    }
+
     void updateScreen()
     {
         drawBorders;
         lineCol.refresh;
+        updateCursor;
         textBox.refresh;
         statusBar.refresh;
         updateTextArea;
@@ -195,12 +241,15 @@ int main(string[] args)
     while(true) {
         ui.draw;
 
-        import core.time;
+        version(BENCHMARK) {
+            import core.time;
+            benchData.startScreenRefresh;
+        }
 
-        benchData.startScreenRefresh;
         updateScreen;
         curses.update;
-        benchData.stopScreenRefresh;
+        version(BENCHMARK)
+            benchData.stopScreenRefresh;
 
         WChar k = scr.getwch();
         try {
@@ -219,10 +268,34 @@ int main(string[] args)
                 currentLine = max(0, currentLine - 1);
                 gb.cursorToLine(currentLine + 1);
             }
+            else if (s.sender == pageDownButton) {
+                currentLine = min(numLines - 1, currentLine + textAreaLines);
+                gb.cursorToLine(currentLine + textAreaLines);
+                // XXX
+                debugExit("CurrentLine: " ~ currentLine.to!string ~ " TextAreaLines: " ~
+                    textAreaLines.to!string ~ " gbCurLine: " ~ gb.currentLine.to!string ~
+                    " gbCurCol: " ~ gb.currentCol.to!string, 0);
+            }
+            else if (s.sender == pageUpButton) {
+                currentLine = max(0, currentLine - textAreaLines);
+                gb.cursorToLine(currentLine - textAreaLines);
+            }
+            else if (s.sender == curLeftButton) {
+                gb.lineCursorForward(1.GrpmIdx);
+            }
+            else if (s.sender == curRightButton) {
+                gb.lineCursorBackward(1.GrpmIdx);
+            }
             else if (s.sender == exitButton) {
                 break;
             }
+            else {
+                debugExit("Unknown signal received: " ~ s.to!string, 1);
+            }
+        } catch (NCException e) {
+            debugExit("Exception: " ~ e.msg, 1);
         }
+
     }
 
     return 0;
