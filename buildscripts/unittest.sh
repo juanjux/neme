@@ -1,2 +1,2 @@
 #!/bin/sh
-dub run --verbose --build=unittest --force
+dub run --verbose --config=test_gapbuffer --build=unittest --force

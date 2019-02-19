@@ -38,13 +38,14 @@ import std.utf: byDchar;
 // OutputRange. That OutputRange will replace the original text of the subjects in
 // the buffer.
 //
+// TODO: Add unittests to check that positions start at 0 and lines and columns at 1
 // TODO: scope all the things
 // TODO: add a demo mode (you type but the buffer representation is shown in
 //       real time as you type or move the cursor)
 // TODO: Unify doc comment style
 
 /* Important:
- * - line numbers are 1-based, cursor positions are 0-based.
+ * - line and column numbers are 1-based, cursor positions are 0-based.
  * - The gap goes from gapStart (included) to gapEnd (not included). This is,
  * gapEnd is the position of the first character OUTSIDE the gap.
 
@@ -495,6 +496,12 @@ struct GapBuffer
     }
     public alias length = contentGrpmLen;
 
+    /+
+     ╔══════════════════════════════════════════════════════════════════════════════
+     ║ ⚑ Cursor operations
+     ╚══════════════════════════════════════════════════════════════════════════════
+    +/
+
     /**
      * Returns the cursor position. Starts at 0.
      */
@@ -508,11 +515,6 @@ struct GapBuffer
         );
     }
 
-    /+
-     ╔══════════════════════════════════════════════════════════════════════════════
-     ║ ⚑ Cursor operations
-     ╚══════════════════════════════════════════════════════════════════════════════
-    +/
     /**
      * Sets the cursor position. The position is relative to
      * the text and ignores the gap. Cursor positions start at 0.
@@ -540,7 +542,11 @@ struct GapBuffer
         if (count <= 0 || buffer.length == 0 || gapEnd + 1 == buffer.length)
             return cursorPos;
 
-        ImGrpmCount actualToMoveGrpm = min(count, contentAfterGapGrpmLen);
+        ImGrpmCount actualToMoveGrpm = min(
+            count,
+            contentAfterGapGrpmLen,
+            GrpmIdx(contentGrpmLen - 1)
+        );
         immutable ImArrayIdx idxDiff = idxDiffUntilGrapheme(gapEnd, actualToMoveGrpm,
                 Direction.Front);
 
@@ -556,7 +562,6 @@ struct GapBuffer
 
         gapStart = newGapStart;
         gapEnd   = newGapEnd;
-
         contentBeforeGapGrpmLen += actualToMoveGrpm.to!long;
         contentAfterGapGrpmLen  -= actualToMoveGrpm.to!long;
         return cursorPos;
@@ -571,8 +576,9 @@ struct GapBuffer
     ImGrpmIdx cursorBackward(GrpmCount count)
     body
     {
-        if (count <= 0 || buffer.length == 0 || gapStart == 0 || count == 0.GrpmCount)
+        if (count <= 0 || buffer.length == 0 || gapStart == 0 || count == 0.GrpmCount) {
             return cursorPos;
+        }
 
         ImGrpmCount actualToMoveGrpm = min(count, contentBeforeGapGrpmLen);
         immutable ImArrayIdx idxDiff = idxDiffUntilGrapheme(gapStart, actualToMoveGrpm,
@@ -588,14 +594,71 @@ struct GapBuffer
             buffer[newGapEnd..gapEnd] = buffer[newGapStart..gapStart];
         }
 
-
         gapStart = newGapStart;
         gapEnd  = newGapEnd;
-
         contentBeforeGapGrpmLen -= actualToMoveGrpm.to!long;
         contentAfterGapGrpmLen  += actualToMoveGrpm.to!long;
 
         return cursorPos;
+    }
+
+    /**
+    * Moves the cursor forward without changing line.
+    * Params:
+    *   count = the number of places to move to the right
+    */
+    public @safe
+    ImGrpmIdx lineCursorForward(GrpmCount count)
+    {
+        if (count <= 0 || cursorPos == contentGrpmLen - 1)
+            return cursorPos;
+
+        // FIXME: currentLine can be slow
+        immutable curLine = currentLine;
+        immutable thisLineEnd = lineEndPos(curLine);
+
+        if (curLine > _newLines.length)
+            return cursorForward(count.GrpmCount);
+
+        immutable nextLineStart = lineStartPos(curLine + 1);
+        if ((cursorPos + count) >= nextLineStart) {
+            immutable diff = curLine < numLines? 1: 0;
+            return cursorForward(((thisLineEnd - diff) - cursorPos).GrpmCount);
+        }
+
+        return cursorForward(count.GrpmCount);
+    }
+
+    /**
+    * Moved the cursor backwards without changing line.
+    * Params:
+    *   count = the number of places to move to the left
+    */
+    public @safe
+    ImGrpmIdx lineCursorBackward(GrpmCount count)
+    {
+        if (count <= 0 || cursorPos == 0)
+            return cursorPos;
+
+        // FIXME: currentLine can be slow
+        immutable curLine = currentLine;
+        if (curLine == 0)
+            return cursorBackward(count);
+
+        GrpmIdx prevLineEnd, diff;
+
+        if (curLine <= 1) {
+            prevLineEnd = 0;
+            diff = count;
+        } else {
+            prevLineEnd = lineEndPos(ArrayIdx(curLine - 1));
+            diff = cursorPos - (prevLineEnd + 1);
+        }
+        //immutable prevLineEnd = curLine == 1.GrpmIdx ? 0.GrpmIdx : lineEndPos(curLine - 1);
+        //immutable diff = cursorPos - (prevLineEnd + 1);
+        immutable realMove = min(diff.GrpmCount, count);
+
+        return cursorBackward(realMove);
     }
 
     // Note: this wont call checkCombinedGraphemes because it would have to check
@@ -606,7 +669,8 @@ struct GapBuffer
 
     /**
      * Delete count chars to the left of the cursor position, moving the gap (and the cursor) back
-     * (typically the effect of the backspace key).
+     * (typically the effect of the backspace key). Note that this wont delete the character
+     * under the cursor.
      *
      * Params:
      *     count = the numbers of chars to delete.
@@ -634,7 +698,7 @@ struct GapBuffer
     /**
       * Delete count chars to the right of the cursor position, moving the end of the gap
       * to the right, keeping the cursor at the same position (typically the effect of the
-      * del key).
+      * del key). This will delete first the character under the cursor.
       *
       * Params:
       *     count = the number of chars to delete.
@@ -941,13 +1005,21 @@ struct GapBuffer
 
     /// Get the start position of the specified line. Doesn't move the cursor.
     public @safe
-    GrpmIdx lineStartPos(ArrayIdx linenum) const
+    GrpmIdx lineStartPos(ArrayIdx lineNum) const
     {
-        if (linenum <= 1 || !contentCPLen || !numLines || !_newLines.length)
+        if (lineNum <= 1 || !contentCPLen || !numLines || !_newLines.length) {
             return 0.GrpmIdx;
+        }
 
-        ArrayIdx newLineIdx = min(linenum - 1, _newLines.length);
-        return (_newLines[newLineIdx - 1] + 1).GrpmIdx;
+        // Get the previous line
+        immutable lineNumIdx = lineNum - 1;
+        ArrayIdx lastNewLineIdx = _newLines.length - 1;
+        ArrayIdx prevLineIdx = lineNumIdx > lastNewLineIdx? lastNewLineIdx: lineNumIdx - 1;
+
+        // Get the previous line ending position
+        GrpmIdx grpmPrevLinePos = CPPos2GrpmPos(_newLines[prevLineIdx]);
+        auto xxx = min(GrpmIdx(grpmPrevLinePos + 1), contentGrpmLen);
+        return min(GrpmIdx(grpmPrevLinePos + 1), GrpmIdx(contentGrpmLen - 1));
     }
 
     /// Get the end position of the specified line. Doesn't move the cursor.
@@ -958,12 +1030,12 @@ struct GapBuffer
             return 0.GrpmIdx;
         }
 
-        if (_newLines.length <= linenum)
-            // last line
+        if (linenum > _newLines.length) {
+            // Over the last newline, return the end of the content
             return (contentGrpmLen - 1).GrpmIdx;
+        }
 
-        // Next line position minus one
-        return (lineStartPos(linenum + 1) - 1).GrpmIdx;
+        return CPPos2GrpmPos(_newLines[linenum -1]);
     }
 
     public @safe @property
@@ -1038,45 +1110,50 @@ struct GapBuffer
     public @safe
     ArrayIdx lineNumAtPos(ArrayIdx pos) const
     {
-        if (pos == 0 || _newLines.length < 2 || _averageLineLenCP == 0)
+        if (pos == 0 || _averageLineLenCP == 0) {
             return 1;
+        }
 
-        if (pos >= contentCPLen)
+        if (pos >= contentCPLen) {
             return numLines;
+        }
 
-        ArrayIdx aprox = min(_newLines.length - 1, pos / _averageLineLenCP);
+        // Starting guesstimate dividing the position between the average line length
+        ArrayIdx guessLineNum = min(_newLines.length - 1, pos / _averageLineLenCP);
+
 
         while (true) {
-            if (aprox >_newLines.length || aprox < 0)
-                return aprox + 1;
+            if (guessLineNum >=_newLines.length || guessLineNum < 0)
+                return guessLineNum + 1;
 
-            immutable guessNewlinePos = _newLines[aprox];
-            if (guessNewlinePos == pos)
-                return aprox + 1; // Lucky shot
+            immutable guessNewlinePos = _newLines[guessLineNum];
+            if (guessNewlinePos == pos) {
+                return guessLineNum + 1; // Lucky shot!
+            }
 
             if (guessNewlinePos > pos) {
                 // Current position is after the guessed newline
 
-                if (aprox == 0)
+                if (guessLineNum == 0)
                     return 1; // it was the first, so found
 
                 // Check the position of the previous newline to see if our pos is between them
-                if (_newLines[aprox - 1] < pos)
-                    return aprox + 1;
+                if (_newLines[guessLineNum - 1] < pos)
+                    return guessLineNum + 1;
 
                 // Not found, continue searching back
-                --aprox;
+                --guessLineNum;
             }
 
             else if (guessNewlinePos < pos) {
                 // Current position is before the guessed newline
 
                 // Check the position of the next newline to see if our pos is between them
-                if (aprox + 1 == _newLines.length || _newLines[aprox + 1] > pos)
-                    return aprox + 2;
+                if (guessLineNum + 1 == _newLines.length || _newLines[guessLineNum + 1] > pos)
+                    return guessLineNum + 2;
 
                 // Not found, continue searching front
-                ++aprox;
+                ++guessLineNum;
             }
             else {
                 assert(false, "Bug in currentLine");

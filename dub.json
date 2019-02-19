@@ -46,6 +46,15 @@
             "targetType": "executable"
         },
         {
+            "name": "test_gapbuffer",
+            "targetType": "executable",
+            "importPaths": ["src/core"],
+            "excludedSourceFiles": [
+                "src/frontend/repl/app.d",
+                "src/frontend/tui/app.d"
+            ]
+        },
+        {
             "name": "repl",
             "targetType": "executable",
             "sourcePaths": ["src/core", "src/frontend/repl"],
@@ -56,7 +65,7 @@
             "name": "tui",
             "targetType": "executable",
             "sourcePaths": ["src/core", "src/frontend/tui"],
-            "importPaths": ["src/core"],
+            "importPaths": ["src/core", "nice/ui"],
             "excludedSourceFiles": ["src/app.d"],
             "dependencies": {
                 "nice-curses": "~>0.2.4",
