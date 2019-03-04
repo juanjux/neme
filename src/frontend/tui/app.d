@@ -1,6 +1,7 @@
 module neme.frontend.tui.app;
 
 import neme.core.gapbuffer;
+import neme.frontend.tui.events;
 import extractors = neme.core.extractors;
 import neme.core.types;
 
@@ -61,6 +62,7 @@ struct BenchData
 
 int main(string[] args)
 {
+    auto flog = new FileLogger("nemecurses.log");
     Curses.Config cfg = {
         //disableEcho: true,
         cursLevel: 0
@@ -70,11 +72,16 @@ int main(string[] args)
         immutable benchData = BenchData("bench.txt");
     auto curses = new Curses(cfg);
 
-    void debugExit(string text, int code)
+    void tuiExit(string text, int code)
     {
-        // destroy(curses);
-        // writeln(text);
-        // exit(code);
+         destroy(curses);
+         writeln(text);
+         exit(code);
+    }
+    scope(exit) {
+        version(BENCHMARK)
+            benchData.scrRefreshWriteMean;
+        tuiExit("", 0);
     }
 
     append("bench.txt", "Starting benchmark----\n");
@@ -120,36 +127,28 @@ int main(string[] args)
     auto cmdLine = statusBar.subwin(1, cmdLineWidth, statusY, scr.width - cmdLineWidth - 5);
 
     bool mustLoadText;
-    int currentLine;
-    ulong numLines;
+    long currentLine;
     GapBuffer gb;
 
-    // XXX: move up
-    scope(exit) {
-        // FIXME: ensure this runs also on Control+c
-        version(BENCHMARK)
-            benchData.scrRefreshWriteMean;
-        // XXX
-        // debugExit("Bye!", 0);
-        debugExit(textBox.curY.to!string ~ " " ~
-            textBox.curX.to!string ~ " CurrentLine: " ~
-            currentLine.to!string ~ " TextAreaLines: " ~
-            textAreaLines.to!string, 0);
-    }
+    /+
+     ╔══════════════════════════════════════════════════════════════════════════════
+     ║ ⚑ Draw / redraw functions
+     ╚══════════════════════════════════════════════════════════════════════════════
+    +/
 
     void updateStatusBar()
     {
         ulong maxLines, curLineLength, curCol, maxCol;
 
         if (!gb.empty) {
-            curCol = 0; // FIXME: Change when allowing cursor movement
+            curCol = gb.currentCol.to!int;
             maxCol = gb.lineAt(gb.currentLine).length;
         }
 
         statusMode.insert("COMMAND MODE | ");
         statusFile.insert("./LICENSE | ");
-        statusLine.insert(format!"Ln %d/%d | "(currentLine + 1, numLines + 1));
-        statusCol.insert(format!"Col %d/%d"(curCol + 1, maxCol + 1));
+        statusLine.insert(format!"Ln %d/%d | "(currentLine + 1, gb.numLines + 1));
+        statusCol.insert(format!"Col %d/%d"(curCol, maxCol));
         cmdLine.insert("CMD: _____");
 
         statusMode.refresh;
@@ -164,33 +163,28 @@ int main(string[] args)
         auto curLine = 0;
         auto gbCurLine = gb.currentLine;
         auto gbCurCol = gb.currentCol.to!int;
+        flog.info("Current col: ", gbCurCol);
         auto gbStartPosLine = gb.lineNumAtPos(startPos.to!long);
         auto lines = extractors.lines(gb, startPos, Direction.Front,
                                       textAreaLines - 1);
 
         foreach(ref line; lines) {
-            if ((gbStartPosLine + curLine) == gbCurLine) {
-                // Current line: draw cursor
-                switch (line.text.length) {
-                    case 0:
-                        textArea.addch(curLine, 0, ' ', Attr.reverse);
-                        break;
-                    case 1:
-                        textArea.addstr(curLine, 0, line.text, Attr.reverse);
-                        break;
-                    default:
-                        if (gbCurCol == 1) {
-                            textArea.addch(curLine, 0, line.text[0], Attr.reverse);
-                            textArea.addstr(curLine, 1, line.text[1..$]);
-                        } else {
-                            textArea.addstr(curLine, 0, line.text[0..gbCurCol - 1]);
-                            textArea.addch(curLine, gbCurCol, line.text[gbCurCol], Attr.reverse);
-                            textArea.addstr(curLine, gbCurCol+1, line.text[gbCurCol+1..$]);
-                        }
-                        break;
-                }
-            } else {
+            if ((gbStartPosLine + curLine) != gbCurLine) {
                 textArea.addstr(curLine, 0, line.text);
+            } else {
+                // Current line: draw cursor
+                if (line.text.length == 0) {
+                    // Empty line, draw cursor at the start
+                    textArea.addch(curLine, 0, ' ', Attr.reverse);
+                } else {
+                    for (int i=0; i<line.text.length; i++) {
+                        if (i == gbCurCol - 1) {
+                            textArea.addch(curLine, i, line.text[i], Attr.reverse);
+                        } else {
+                            textArea.addch(curLine, i, line.text[i]);
+                        }
+                    }
+                }
             }
             ++curLine;
         }
@@ -202,7 +196,6 @@ int main(string[] args)
 
         if (mustLoadText) {
             startPos = 0.GrpmIdx;
-            numLines = gb.numLines;
             mustLoadText = false;
         } else {
             startPos = gb.cursorPos;
@@ -236,8 +229,13 @@ int main(string[] args)
         scr.refresh;
     }
 
+    auto keyHandlr = new KeyboardHandlers(flog);
 
-    // Main loop
+    /+
+     ╔══════════════════════════════════════════════════════════════════════════════
+     ║ ⚑ Main loop
+     ╚══════════════════════════════════════════════════════════════════════════════
+    +/
     while(true) {
         ui.draw;
 
@@ -254,31 +252,47 @@ int main(string[] args)
         WChar k = scr.getwch();
         try {
             ui.keystroke(k);
+            flog.info("KeyStroke: ", k);
+            switch(k.key) {
+                case 258: // cursorDown
+                    keyHandlr.lineDown(currentLine);
+                    break;
+                case 259: // cursorUp
+                    keyHandlr.lineUp(currentLine);
+                    break;
+                case 338: // pageDown
+                    keyHandlr.pageDown(currentLine, textAreaLines);
+                    break;
+                case 339: // pageUp
+                    keyHandlr.pageUp(currentLine, textAreaLines);
+                    break;
+                case 261: // left cursor
+                    gb.lineCursorForward(1.GrpmIdx);
+                    break;
+                case 260: // right cursor
+                    gb.lineCursorBackward(1.GrpmIdx);
+                    break;
+                default:
+            }
+        // Button handlers
         } catch(Button.Signal s) {
             if (s.sender == loadButton) {
                 import std.file: readText;
                 gb = gapbuffer(readText("LICENSE"));
+                keyHandlr.gb = &gb;
                 mustLoadText = true;
             }
             else if (s.sender == downButton) {
-                currentLine = min(numLines - 1, currentLine + 1);
-                gb.cursorToLine(currentLine + 1);
+                keyHandlr.lineDown(currentLine);
             }
             else if (s.sender == upButton) {
-                currentLine = max(0, currentLine - 1);
-                gb.cursorToLine(currentLine + 1);
+                keyHandlr.lineUp(currentLine);
             }
             else if (s.sender == pageDownButton) {
-                currentLine = min(numLines - 1, currentLine + textAreaLines);
-                gb.cursorToLine(currentLine + textAreaLines);
-                // XXX
-                debugExit("CurrentLine: " ~ currentLine.to!string ~ " TextAreaLines: " ~
-                    textAreaLines.to!string ~ " gbCurLine: " ~ gb.currentLine.to!string ~
-                    " gbCurCol: " ~ gb.currentCol.to!string, 0);
+                keyHandlr.pageDown(currentLine, textAreaLines);
             }
             else if (s.sender == pageUpButton) {
-                currentLine = max(0, currentLine - textAreaLines);
-                gb.cursorToLine(currentLine - textAreaLines);
+                keyHandlr.pageUp(currentLine, textAreaLines);
             }
             else if (s.sender == curLeftButton) {
                 gb.lineCursorForward(1.GrpmIdx);
@@ -290,12 +304,15 @@ int main(string[] args)
                 break;
             }
             else {
-                debugExit("Unknown signal received: " ~ s.to!string, 1);
+                string msg = "Unknown signal received: " ~ s.to!string;
+                flog.error(msg);
+                tuiExit(msg, 1);
             }
         } catch (NCException e) {
-            debugExit("Exception: " ~ e.msg, 1);
+            string msg2 = "Exception catched on signal processing: " ~ e.msg;
+            flog.error(msg2);
+            tuiExit(msg2, 1);
         }
-
     }
 
     return 0;

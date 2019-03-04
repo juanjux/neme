@@ -1018,7 +1018,6 @@ struct GapBuffer
 
         // Get the previous line ending position
         GrpmIdx grpmPrevLinePos = CPPos2GrpmPos(_newLines[prevLineIdx]);
-        auto xxx = min(GrpmIdx(grpmPrevLinePos + 1), contentGrpmLen);
         return min(GrpmIdx(grpmPrevLinePos + 1), GrpmIdx(contentGrpmLen - 1));
     }
 
@@ -1044,11 +1043,11 @@ struct GapBuffer
         if (!contentCPLen || !numLines) {
             return 0L;
         }
-        // Special case: if the cursor is on a \n, col is always 1
-        if (this[cursorPos.to!ulong] == "\n")
-            return 1;
 
-        return cursorPos - lineStartPos(currentLine) + 1;
+        // Special case: if the cursor is on a \n, col is always pos - 1
+        // (last char on the column)
+        auto modifier = this[cursorPos.to!ulong] == "\n"? 0: 1;
+        return cursorPos - lineStartPos(currentLine) + modifier;
     }
 
     // FIXME: unittest

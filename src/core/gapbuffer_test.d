@@ -654,6 +654,31 @@ debug
     assert(gb.cursorPos == 4);
     gb.lineCursorForward(100.GrpmCount); // still second \n
     assert(gb.cursorPos == 4);
+
+    text = "123\n";
+    gb = gapbuffer(text, 10);
+    assert(gb.cursorPos == 0.GrpmCount);
+    assert(gb.currentCol == 1.GrpmCount);
+
+    gb.lineCursorForward(1.GrpmCount);
+    assert(gb.cursorPos == 1.GrpmCount);
+    assert(gb.currentCol == 2.GrpmCount);
+
+    gb.lineCursorForward(1.GrpmCount);
+    assert(gb.cursorPos == 2.GrpmCount);
+    assert(gb.currentCol == 3.GrpmCount);
+
+    gb.lineCursorForward(1.GrpmCount);
+    assert(gb.cursorPos == 3.GrpmCount);
+    assert(gb.currentCol == 3.GrpmCount);
+
+    gb.lineCursorForward(1.GrpmCount);
+    assert(gb.cursorPos == 3.GrpmCount);
+    assert(gb.currentCol == 3.GrpmCount);
+
+    gb.lineCursorForward(1000.GrpmCount);
+    assert(gb.cursorPos == 3.GrpmCount);
+    assert(gb.currentCol == 3.GrpmCount);
 }
 
 // lineCursorBackward
@@ -1303,7 +1328,8 @@ debug
     auto cgb = gapbuffer(combtext, 10);
     auto ngb = gapbuffer(nonl, 10);
 
-    // cursorPos == 0, line: 1, col: 1
+    // line 1, col 1
+    assert(gb.cursorPos == 0);
     assert(gb.currentCol == 1);
     assert(cgb.currentCol == 1);
 
@@ -1311,7 +1337,8 @@ debug
     cgb.cursorForward(1.GrpmIdx);
     ngb.cursorForward(1.GrpmIdx);
 
-    // cursorPos == 1, line: 1, col: 2
+    // line 1, col 2
+    assert(gb.cursorPos == 1);
     assert(gb.currentCol == 2);
     assert(cgb.currentCol == 2);
     assert(ngb.currentCol == 2);
@@ -1320,28 +1347,88 @@ debug
     cgb.cursorForward(1.GrpmIdx);
     ngb.cursorForward(1.GrpmIdx);
 
-    // cursorPos == 2, line: 1, col: 1 for gb & cgb (because of \n), 3 for ngb
-    assert(gb.currentCol == 1);
-    assert(cgb.currentCol == 1);
+    // line 1, col 2 for gb & cgb
+    // line 1, col 3 for ngb
+    assert(gb.cursorPos == 2);
+    assert(gb.currentCol == 2);
+    assert(cgb.currentCol == 2);
     assert(ngb.currentCol == 3);
 
     gb.cursorForward(1.GrpmIdx);
     cgb.cursorForward(1.GrpmIdx);
     ngb.cursorForward(1.GrpmIdx);
 
-    // cursorPos == 3, line: 1, col: 1 for gb & cgb (because of \n), 3 for ngb
-    // Second line for gb and cgb
+    // line 1, col 3 for ngb
+    // line 2, col 1 for gb & cgb
+    assert(gb.cursorPos == 3);
+    assert(ngb.cursorPos == 2);
     assert(gb.currentCol == 1);
     assert(cgb.currentCol == 1);
     assert(ngb.currentCol == 3);
 
+    // cursorPos == max, which is 6 for gb and 2 for ngb
     gb.cursorForward(1000.GrpmIdx);
-    cgb.cursorForward(1000.GrpmIdx);
     ngb.cursorForward(1000.GrpmIdx);
-
-    // assert(gb.currentCol == 1);
-    assert(cgb.currentCol == 1);
+    assert(gb.cursorPos == 6);
+    assert(ngb.cursorPos == 2);
+    assert(gb.currentCol == 0);
     assert(ngb.currentCol == 3);
+
+
+    // line: 2, col 2
+    // line 3, col 0 because it's on a single \n
+    cgb.cursorForward(1.GrpmIdx);
+    assert(cgb.cursorPos == 4);
+    assert(cgb.currentCol == 2);
+
+    // line: 2, col 2 (last of line) because of the \n
+    cgb.cursorForward(1.GrpmIdx);
+    assert(cgb.cursorPos == 5);
+    assert(cgb.currentCol == 2);
+
+    // line: 3, col 0 (because of the single \n)
+    cgb.cursorForward(1.GrpmIdx);
+    assert(cgb.cursorPos == 6);
+    assert(cgb.currentCol == 0);
+
+    // line: 4, col 1
+    cgb.cursorForward(1.GrpmIdx);
+    assert(cgb.cursorPos == 7);
+    assert(cgb.currentCol == 1);
+
+    // line: 4, col 2
+    cgb.cursorForward(1.GrpmIdx);
+    assert(cgb.cursorPos == 8);
+    assert(cgb.currentCol == 2);
+
+    // line: 4, col 3
+    cgb.cursorForward(1.GrpmIdx);
+    assert(cgb.cursorPos == 9);
+    assert(cgb.currentCol == 3);
+
+    // cursorPos == 10
+    // line: 4, col 4
+    cgb.cursorForward(1.GrpmIdx);
+    assert(cgb.currentCol == 4);
+
+    // line: 4, col 5
+    cgb.cursorForward(1.GrpmIdx);
+    assert(cgb.cursorPos == 11);
+    assert(cgb.currentCol == 5);
+
+    // cursorPos == 12
+    // line: 4, col 5 (last of line) because of the \n
+    cgb.cursorForward(1.GrpmIdx);
+    assert(cgb.cursorPos == 12);
+    assert(cgb.currentCol == 5);
+
+    // cursorPos == 12 (max)
+    // line: 4, col 5 (max)
+    cgb.cursorForward(1000.GrpmIdx);
+    assert(cgb.cursorPos == 12);
+    assert(cgb.currentCol == 5);
+
+    cgb.cursorForward(1000.GrpmIdx);
 }
 
 // cursorToLine
