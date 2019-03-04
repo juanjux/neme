@@ -71,11 +71,16 @@ int main(string[] args)
         immutable benchData = BenchData("bench.txt");
     auto curses = new Curses(cfg);
 
-    void debugExit(string text, int code)
+    void tuiExit(string text, int code)
     {
-        // destroy(curses);
-        // writeln(text);
-        // exit(code);
+         destroy(curses);
+         writeln(text);
+         exit(code);
+    }
+    scope(exit) {
+        version(BENCHMARK)
+            benchData.scrRefreshWriteMean;
+        tuiExit("", 0);
     }
 
     append("bench.txt", "Starting benchmark----\n");
@@ -124,19 +129,6 @@ int main(string[] args)
     int currentLine;
     ulong numLines;
     GapBuffer gb;
-
-    // XXX: move up
-    scope(exit) {
-        // FIXME: ensure this runs also on Control+c
-        version(BENCHMARK)
-            benchData.scrRefreshWriteMean;
-        // XXX
-        // debugExit("Bye!", 0);
-        debugExit(textBox.curY.to!string ~ " " ~
-            textBox.curX.to!string ~ " CurrentLine: " ~
-            currentLine.to!string ~ " TextAreaLines: " ~
-            textAreaLines.to!string, 0);
-    }
 
     void updateStatusBar()
     {
@@ -267,10 +259,6 @@ int main(string[] args)
             else if (s.sender == pageDownButton) {
                 currentLine = min(numLines - 1, currentLine + textAreaLines);
                 gb.cursorToLine(currentLine + textAreaLines);
-                // XXX
-                debugExit("CurrentLine: " ~ currentLine.to!string ~ " TextAreaLines: " ~
-                    textAreaLines.to!string ~ " gbCurLine: " ~ gb.currentLine.to!string ~
-                    " gbCurCol: " ~ gb.currentCol.to!string, 0);
             }
             else if (s.sender == pageUpButton) {
                 currentLine = max(0, currentLine - textAreaLines);
@@ -286,10 +274,14 @@ int main(string[] args)
                 break;
             }
             else {
-                debugExit("Unknown signal received: " ~ s.to!string, 1);
+                string msg = "Unknown signal received: " ~ s.to!string;
+                flog.error(msg);
+                tuiExit(msg, 1);
             }
         } catch (NCException e) {
-            debugExit("Exception: " ~ e.msg, 1);
+            string msg2 = "Exception catched on signal processing: " ~ e.msg;
+            flog.error(msg2);
+            tuiExit(msg2, 1);
         }
 
     }
