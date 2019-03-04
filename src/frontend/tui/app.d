@@ -61,6 +61,7 @@ struct BenchData
 
 int main(string[] args)
 {
+    auto flog = new FileLogger("nemecurses.log");
     Curses.Config cfg = {
         //disableEcho: true,
         cursLevel: 0
@@ -142,14 +143,14 @@ int main(string[] args)
         ulong maxLines, curLineLength, curCol, maxCol;
 
         if (!gb.empty) {
-            curCol = 0; // FIXME: Change when allowing cursor movement
+            curCol = gb.currentCol.to!int;
             maxCol = gb.lineAt(gb.currentLine).length;
         }
 
         statusMode.insert("COMMAND MODE | ");
         statusFile.insert("./LICENSE | ");
         statusLine.insert(format!"Ln %d/%d | "(currentLine + 1, numLines + 1));
-        statusCol.insert(format!"Col %d/%d"(curCol + 1, maxCol + 1));
+        statusCol.insert(format!"Col %d/%d"(curCol, maxCol));
         cmdLine.insert("CMD: _____");
 
         statusMode.refresh;
@@ -164,33 +165,28 @@ int main(string[] args)
         auto curLine = 0;
         auto gbCurLine = gb.currentLine;
         auto gbCurCol = gb.currentCol.to!int;
+        flog.info("Current col: ", gbCurCol);
         auto gbStartPosLine = gb.lineNumAtPos(startPos.to!long);
         auto lines = extractors.lines(gb, startPos, Direction.Front,
                                       textAreaLines - 1);
 
         foreach(ref line; lines) {
-            if ((gbStartPosLine + curLine) == gbCurLine) {
-                // Current line: draw cursor
-                switch (line.text.length) {
-                    case 0:
-                        textArea.addch(curLine, 0, ' ', Attr.reverse);
-                        break;
-                    case 1:
-                        textArea.addstr(curLine, 0, line.text, Attr.reverse);
-                        break;
-                    default:
-                        if (gbCurCol == 1) {
-                            textArea.addch(curLine, 0, line.text[0], Attr.reverse);
-                            textArea.addstr(curLine, 1, line.text[1..$]);
-                        } else {
-                            textArea.addstr(curLine, 0, line.text[0..gbCurCol - 1]);
-                            textArea.addch(curLine, gbCurCol, line.text[gbCurCol], Attr.reverse);
-                            textArea.addstr(curLine, gbCurCol+1, line.text[gbCurCol+1..$]);
-                        }
-                        break;
-                }
-            } else {
+            if ((gbStartPosLine + curLine) != gbCurLine) {
                 textArea.addstr(curLine, 0, line.text);
+            } else {
+                // Current line: draw cursor
+                if (line.text.length == 0) {
+                    // Empty line, draw cursor at the start
+                    textArea.addch(curLine, 0, ' ', Attr.reverse);
+                } else {
+                    for (int i=0; i<line.text.length; i++) {
+                        if (i == gbCurCol - 1) {
+                            textArea.addch(curLine, i, line.text[i], Attr.reverse);
+                        } else {
+                            textArea.addch(curLine, i, line.text[i]);
+                        }
+                    }
+                }
             }
             ++curLine;
         }
