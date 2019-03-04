@@ -1,6 +1,7 @@
 module neme.frontend.tui.app;
 
 import neme.core.gapbuffer;
+import neme.frontend.tui.events;
 import extractors = neme.core.extractors;
 import neme.core.types;
 
@@ -126,9 +127,14 @@ int main(string[] args)
     auto cmdLine = statusBar.subwin(1, cmdLineWidth, statusY, scr.width - cmdLineWidth - 5);
 
     bool mustLoadText;
-    int currentLine;
-    ulong numLines;
+    long currentLine;
     GapBuffer gb;
+
+    /+
+     ╔══════════════════════════════════════════════════════════════════════════════
+     ║ ⚑ Draw / redraw functions
+     ╚══════════════════════════════════════════════════════════════════════════════
+    +/
 
     void updateStatusBar()
     {
@@ -141,7 +147,7 @@ int main(string[] args)
 
         statusMode.insert("COMMAND MODE | ");
         statusFile.insert("./LICENSE | ");
-        statusLine.insert(format!"Ln %d/%d | "(currentLine + 1, numLines + 1));
+        statusLine.insert(format!"Ln %d/%d | "(currentLine + 1, gb.numLines + 1));
         statusCol.insert(format!"Col %d/%d"(curCol, maxCol));
         cmdLine.insert("CMD: _____");
 
@@ -190,7 +196,6 @@ int main(string[] args)
 
         if (mustLoadText) {
             startPos = 0.GrpmIdx;
-            numLines = gb.numLines;
             mustLoadText = false;
         } else {
             startPos = gb.cursorPos;
@@ -224,8 +229,13 @@ int main(string[] args)
         scr.refresh;
     }
 
+    auto keyHandlr = new KeyboardHandlers(flog);
 
-    // Main loop
+    /+
+     ╔══════════════════════════════════════════════════════════════════════════════
+     ║ ⚑ Main loop
+     ╚══════════════════════════════════════════════════════════════════════════════
+    +/
     while(true) {
         ui.draw;
 
@@ -242,27 +252,47 @@ int main(string[] args)
         WChar k = scr.getwch();
         try {
             ui.keystroke(k);
+            flog.info("KeyStroke: ", k);
+            switch(k.key) {
+                case 258: // cursorDown
+                    keyHandlr.lineDown(currentLine);
+                    break;
+                case 259: // cursorUp
+                    keyHandlr.lineUp(currentLine);
+                    break;
+                case 338: // pageDown
+                    keyHandlr.pageDown(currentLine, textAreaLines);
+                    break;
+                case 339: // pageUp
+                    keyHandlr.pageUp(currentLine, textAreaLines);
+                    break;
+                case 261: // left cursor
+                    gb.lineCursorForward(1.GrpmIdx);
+                    break;
+                case 260: // right cursor
+                    gb.lineCursorBackward(1.GrpmIdx);
+                    break;
+                default:
+            }
+        // Button handlers
         } catch(Button.Signal s) {
             if (s.sender == loadButton) {
                 import std.file: readText;
                 gb = gapbuffer(readText("LICENSE"));
+                keyHandlr.gb = &gb;
                 mustLoadText = true;
             }
             else if (s.sender == downButton) {
-                currentLine = min(numLines - 1, currentLine + 1);
-                gb.cursorToLine(currentLine + 1);
+                keyHandlr.lineDown(currentLine);
             }
             else if (s.sender == upButton) {
-                currentLine = max(0, currentLine - 1);
-                gb.cursorToLine(currentLine + 1);
+                keyHandlr.lineUp(currentLine);
             }
             else if (s.sender == pageDownButton) {
-                currentLine = min(numLines - 1, currentLine + textAreaLines);
-                gb.cursorToLine(currentLine + textAreaLines);
+                keyHandlr.pageDown(currentLine, textAreaLines);
             }
             else if (s.sender == pageUpButton) {
-                currentLine = max(0, currentLine - textAreaLines);
-                gb.cursorToLine(currentLine - textAreaLines);
+                keyHandlr.pageUp(currentLine, textAreaLines);
             }
             else if (s.sender == curLeftButton) {
                 gb.lineCursorForward(1.GrpmIdx);
@@ -283,7 +313,6 @@ int main(string[] args)
             flog.error(msg2);
             tuiExit(msg2, 1);
         }
-
     }
 
     return 0;
