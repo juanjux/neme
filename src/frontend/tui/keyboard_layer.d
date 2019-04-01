@@ -2,18 +2,7 @@ module neme.frontend.tui.keyboard_layer;
 
 import nice.ui.elements: WChar;
 
-enum Operations
-{
-    CHAR_LEFT,
-    CHAR_RIGHT,
-    LINE_UP,
-    LINE_DOWN,
-    PAGE_UP,
-    PAGE_DOWN,
-    LOAD_FILE,
-    QUIT,
-    UNKNOWN,
-}
+import neme.frontend.tui.events: Operations;
 
 // Interface defining the key commands that keyboard layers must 
 // implement. Every command returns one or more WChars matching the

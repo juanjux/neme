@@ -4,12 +4,13 @@ import std.conv: to;
 
 import nice.ui.elements: WChar;
 import neme.frontend.tui.keyboard_layer;
+import neme.frontend.tui.events: Operations;
 
 
 // XXX static functions instead?
 class VimishLayer : KeyboardLayer
 {
-    Operations[WChar] key2Ops;
+    private Operations[WChar] key2Ops;
 
     this() {
         key2Ops = [
@@ -31,11 +32,24 @@ class VimishLayer : KeyboardLayer
             WChar(338, true): Operations.PAGE_DOWN, // page-down
             WChar('\x04'): Operations.PAGE_DOWN, // ctrl-d
 
+            WChar('w'): Operations.WORD_RIGHT,
+            WChar('W'): Operations.UWORD_RIGHT,
+
+            WChar('b'): Operations.WORD_LEFT,
+            WChar('B'): Operations.UWORD_LEFT,
+
+            WChar(262, true): Operations.LINE_START, // home
+            WChar('0'): Operations.LINE_START,
+
+            WChar(360, true): Operations.LINE_END, // end
+            WChar('$'): Operations.LINE_END,
+
             WChar('Q'): Operations.QUIT,
         ];
     }
 
-    override Operations getOpForKey(WChar key)
+    override public pure 
+    Operations getOpForKey(WChar key)
     {
         auto op = key in key2Ops;
         if (op != null) 

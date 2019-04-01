@@ -123,7 +123,7 @@ const(Subject)[] words(in GapBuffer gb, GrpmIdx startPos, Direction dir,
         bool isWordChar = true;
 
         foreach(BufferElement cp; curGrpm) {
-            // FIXME XXX: any sequence of wordSeparators started by a wordSeparator char is also a word
+            // FIXME: any sequence of wordSeparators started by a wordSeparator char is also a word
             // until the first non separator or whitespace character
             if (cp in globalSettings.wordSeparators) {
                 isWordChar = false;

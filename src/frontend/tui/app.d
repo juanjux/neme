@@ -251,6 +251,7 @@ mainLoop: while(true) {
         flog.info("KeyStroke: ", k);
 
         Operations op = keyLayer.getOpForKey(k);
+        // TODO: add as OperationHandlers.do
         switch(op) 
         {
             case Operations.CHAR_LEFT:
@@ -272,6 +273,24 @@ mainLoop: while(true) {
                 break;
             case Operations.PAGE_UP:
                 opHandlr.pageUp(currentLine, textAreaLines, savedColumn);
+                break;
+            case Operations.WORD_LEFT:
+                opHandlr.wordLeft();
+                savedColumn = gb.currentCol;
+                break;
+            // TODO: UWORD_LEFT
+            case Operations.WORD_RIGHT:
+                opHandlr.wordRight();
+                savedColumn = gb.currentCol;
+                break;
+            // TODO: UWORD_RIGHT
+            case Operations.LINE_START:
+                opHandlr.lineStart();
+                savedColumn = gb.currentCol;
+                break;
+            case Operations.LINE_END:
+                opHandlr.lineEnd();
+                savedColumn = gb.currentCol;
                 break;
             case Operations.QUIT:
                 break mainLoop;
