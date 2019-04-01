@@ -10,6 +10,5 @@ import neme.frontend.tui.events: Operations;
 // src.getwch
 interface KeyboardLayer
 {
-    // FIXME: const or immutable
     Operations getOpForKey(WChar key);
 }

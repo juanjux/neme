@@ -1,5 +1,7 @@
 module neme.frontend.tui.events;
 
+// FIXME XXX: rename to operations.d
+
 import std.algorithm.comparison : max, min;
 import std.conv;
 import std.experimental.logger;
@@ -7,6 +9,7 @@ import std.experimental.logger;
 import neme.core.gapbuffer;
 import neme.core.settings;
 import extractors = neme.core.extractors;
+
 
 enum Operations
 {
@@ -23,6 +26,13 @@ enum Operations
     UWORD_RIGHT,
     LINE_START,
     LINE_END,
+    JUMPTO_CHAR_RIGHT, // XXX implement
+    JUMPTO_CHAR_LEFT, // XXX implement
+    SEARCH_FRONT, // XXX implement
+    SEARCH_BACK, // XXX implement
+    JUMP_WORD_UNDERCURSOR_FRONT, // XXX implement
+    JUMP_WORD_UNDERCURSOR_BACK, // XXX implement
+    JUMP_MATCHING_BLOCKCHAR, // XXX implement (like '%' in Vim)
     QUIT,
     UNKNOWN,
 }

@@ -211,16 +211,10 @@ void drawBorders()
     scr.box('|', '-');
 }
 
-void updateCursor()
-{
-    auto viewCursorPos = (currentLine % textAreaLines) + 4;
-}
-
 void updateScreen()
 {
     drawBorders;
     lineCol.refresh;
-    updateCursor;
     textBox.refresh;
     statusBar.refresh;
     updateTextArea;
@@ -252,6 +246,8 @@ mainLoop: while(true) {
 
         Operations op = keyLayer.getOpForKey(k);
         // TODO: add as OperationHandlers.do
+        // XXX repeat operations (like '5w'): take the repeat factor, the operation, and 
+        // pass to it as a repeat argument
         switch(op) 
         {
             case Operations.CHAR_LEFT:
