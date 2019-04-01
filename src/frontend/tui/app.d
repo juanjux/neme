@@ -12,6 +12,8 @@ import std.experimental.logger;
 import nice.ui.elements;
 import neme.core.gapbuffer;
 import neme.frontend.tui.events;
+import neme.frontend.tui.keyboard_layer;
+import neme.frontend.tui.vimish_layer;
 import extractors = neme.core.extractors;
 import neme.core.types;
 
@@ -226,14 +228,16 @@ void updateScreen()
     scr.refresh;
 }
 
-auto keyHandlr = new KeyboardHandlers(flog);
+auto opHandlr = new OperationHandlers(flog);
+// TODO: make this configurable
+KeyboardLayer keyLayer = new VimishLayer();
 
 /+
     ╔══════════════════════════════════════════════════════════════════════════════
     ║ ⚑ Main loop
     ╚══════════════════════════════════════════════════════════════════════════════
 +/
-while(true) {
+mainLoop: while(true) {
     ui.draw;
 
     version(BENCHMARK) benchData.startScreenRefresh;
@@ -245,39 +249,45 @@ while(true) {
     try {
         ui.keystroke(k);
         flog.info("KeyStroke: ", k);
-        switch(k.key) {
-            case 258: // cursorDown
-                keyHandlr.lineDown(currentLine, savedColumn);
-                break;
-            case 259: // cursorUp
-                keyHandlr.lineUp(currentLine, savedColumn);
-                break;
-            case 338: // pageDown
-                keyHandlr.pageDown(currentLine, textAreaLines, savedColumn);
-                break;
-            case 339: // pageUp
-                keyHandlr.pageUp(currentLine, textAreaLines, savedColumn);
-                break;
-            case 261: // left cursor
-                gb.lineCursorForward(1.GrpmIdx);
-                savedColumn = gb.currentCol;
-                break;
-            case 260: // right cursor
+
+        Operations op = keyLayer.getOpForKey(k);
+        switch(op) 
+        {
+            case Operations.CHAR_LEFT:
                 gb.lineCursorBackward(1.GrpmIdx);
                 savedColumn = gb.currentCol;
                 break;
+            case Operations.CHAR_RIGHT:
+                gb.lineCursorForward(1.GrpmIdx);
+                savedColumn = gb.currentCol;
+                break;
+            case Operations.LINE_DOWN:
+                opHandlr.lineDown(currentLine, savedColumn);
+                break;
+            case Operations.LINE_UP:
+                opHandlr.lineUp(currentLine, savedColumn);
+                break;
+            case Operations.PAGE_DOWN:
+                opHandlr.pageDown(currentLine, textAreaLines, savedColumn);
+                break;
+            case Operations.PAGE_UP:
+                opHandlr.pageUp(currentLine, textAreaLines, savedColumn);
+                break;
+            case Operations.QUIT:
+                break mainLoop;
             default:
         }
+
     // Button handlers
     } catch(Button.Signal s) {
         if (s.sender == loadButton) {
             import std.file: readText;
             gb = gapbuffer(readText("LICENSE"));
-            keyHandlr.gb = &gb;
+            opHandlr.gb = &gb;
             mustLoadText = true;
         }
         else if (s.sender == exitButton) {
-            break;
+            break mainLoop;
         }
         else {
             string msg = "Unknown signal received: " ~ s.to!string;

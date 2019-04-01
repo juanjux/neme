@@ -5,7 +5,7 @@ import std.experimental.logger;
 
 import neme.core.gapbuffer;
 
-class KeyboardHandlers
+class OperationHandlers
 {
     // FIXME: accesor
     package GapBuffer* gb = void;

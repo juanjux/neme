@@ -5,61 +5,42 @@ import std.conv: to;
 import nice.ui.elements: WChar;
 import neme.frontend.tui.keyboard_layer;
 
+
+// XXX static functions instead?
 class VimishLayer : KeyboardLayer
 {
-    WChar[] charLeft() 
-    { 
-        return [
-            WChar(260, true)
-        ];
-    } 
+    Operations[WChar] key2Ops;
 
-    WChar[] charRight() 
-    { 
-        return [
-            WChar(261, true)
-        ];
-    } 
+    this() {
+        key2Ops = [
+            WChar(260, true): Operations.CHAR_LEFT, // cursor-left
+            WChar('h'): Operations.CHAR_LEFT,
 
-    WChar[] lineUp() 
-    { 
-        return [
-            WChar(259, true)
-        ];
-    } 
+            WChar(261, true): Operations.CHAR_RIGHT, // cursor-right
+            WChar('l'): Operations.CHAR_RIGHT,
 
-    WChar[] lineDown() 
-    { 
-        return [
-            WChar(258, true)
-        ];
-    } 
+            WChar(259, true): Operations.LINE_UP, // cursor-up
+            WChar('k'): Operations.LINE_UP,
 
-    WChar[] pageUp() 
-    { 
-        return [
-            WChar(339, true)
-        ];
-    } 
+            WChar(258, true): Operations.LINE_DOWN, // cursor-down
+            WChar('j'): Operations.LINE_DOWN,
 
-    WChar[] pageDown() 
-    { 
-        return [
-            WChar(338, true)
-        ];
-    } 
+            WChar(339, true): Operations.PAGE_UP, // page-up
+            WChar('\x15'): Operations.PAGE_UP, // ctrl-u
 
-    WChar[] loadFile() 
-    { 
-        return [
-            WChar('L')
-        ];
-    } 
+            WChar(338, true): Operations.PAGE_DOWN, // page-down
+            WChar('\x04'): Operations.PAGE_DOWN, // ctrl-d
 
-    WChar[] quit() 
-    { 
-        return [
-            WChar('Q')
+            WChar('Q'): Operations.QUIT,
         ];
-    } 
+    }
+
+    override Operations getOpForKey(WChar key)
+    {
+        auto op = key in key2Ops;
+        if (op != null) 
+            return *op;
+
+        return Operations.UNKNOWN;
+    }
 }

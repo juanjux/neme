@@ -2,6 +2,18 @@ module neme.frontend.tui.keyboard_layer;
 
 import nice.ui.elements: WChar;
 
+enum Operations
+{
+    CHAR_LEFT,
+    CHAR_RIGHT,
+    LINE_UP,
+    LINE_DOWN,
+    PAGE_UP,
+    PAGE_DOWN,
+    LOAD_FILE,
+    QUIT,
+    UNKNOWN,
+}
 
 // Interface defining the key commands that keyboard layers must 
 // implement. Every command returns one or more WChars matching the
@@ -10,12 +22,5 @@ import nice.ui.elements: WChar;
 interface KeyboardLayer
 {
     // FIXME: const or immutable
-    WChar[] charLeft();
-    WChar[] charRight();
-    WChar[] lineUp();
-    WChar[] lineDown();
-    WChar[] pageUp();
-    WChar[] pageDown();
-    WChar[] loadFile();
-    WChar[] quit();
+    Operations getOpForKey(WChar key);
 }
