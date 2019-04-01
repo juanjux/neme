@@ -19,8 +19,26 @@ was designed for [another keyboard](https://en.wikipedia.org/wiki/Vi#/media/File
 and requirements and environments that are pretty different from what we 
 use today.
 
-The current status of this project already provides a very performant and feature complete [gapbuffer](https://en.wikipedia.org/wiki/Gap_buffer), a simple "ed-like" line text editor (used mostly for integration testing)
-and work is ongoing to a ncurses TUI. Eventually I would also like to provide a graphical user interface.
+Current status:
+
+- Stable and very performant and feature complete [gapbuffer](https://en.wikipedia.org/wiki/Gap_buffer)
+implementation.
+
+- Simple "ed-like" line text editor used for integration and performance testing.
+
+- ncurses TUI that currently can be used to read files like the less or more
+commands.
+
+Roadmap:
+
+- Develop the TUI into a full featured ncurses text editor with configurable
+keyboard control "personalities" so you could use it like Vim or Emacs just
+changing a config setting.
+
+- Implement a plugin system. Plugins will be implemented in D so no shitty 
+scripting language will cause slowdowns like happens with other editors.
+
+- Provide a graphical interface using Gtkd.
 
 ### Building
 
