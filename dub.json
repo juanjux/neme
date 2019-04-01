@@ -51,7 +51,7 @@
             "importPaths": ["src/core"],
             "excludedSourceFiles": [
                 "src/frontend/repl/app.d",
-                "src/frontend/tui/app.d"
+                "src/frontend/tui/*"
             ]
         },
         {

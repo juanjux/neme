@@ -43,7 +43,7 @@ class Settings
             '"'.to!BufferElement,
             '\''.to!BufferElement,
             '*'.to!BufferElement,
-            );
+        );
     }
 }
 

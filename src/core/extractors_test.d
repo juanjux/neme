@@ -97,10 +97,6 @@ import std.conv;
 }
 @safe unittest
 {
-
-}
-@safe unittest
-{
     auto gb = gapbuffer("", 10);
 
     auto res = extractors.words(gb, 0.GrpmIdx, Direction.Front, 2);
@@ -171,6 +167,26 @@ import std.conv;
 }
 @safe unittest
 {
+    string text = "ñaña\nálvarez martínez\npok,.{}\tsomething\n";
+    auto gb = gapbuffer(text, 10);
+
+    auto res = extractors.uWords(gb, 0.GrpmIdx, Direction.Front, 5);
+    assert(res.length == 5);
+    assert(res[0] == Subject(0.GrpmIdx, 3.GrpmIdx, "ñaña".to!BufferType));
+    assert(res[1] == Subject(5.GrpmIdx, 11.GrpmIdx, "álvarez".to!BufferType));
+    assert(res[2] == Subject(13.GrpmIdx, 20.GrpmIdx, "martínez".to!BufferType));
+    assert(res[3] == Subject(22.GrpmIdx, 28.GrpmIdx, "pok,.{}".to!BufferType));
+    assert(res[4] == Subject(30.GrpmIdx, 38.GrpmIdx, "something".to!BufferType));
+
+    auto res2 = extractors.uWords(gb, GrpmIdx(gb.length - 1), Direction.Back, 5);
+    assert(res2[0] == res[4]);
+    assert(res2[1] == res[3]);
+    assert(res2[2] == res[2]);
+    assert(res2[3] == res[1]);
+    assert(res2[4] == res[0]);
+}
+@safe unittest
+{
     string text = "GΛ̊TE ascii";
     auto gb = gapbuffer(text, 10);
 
@@ -184,9 +200,24 @@ import std.conv;
     assert(res2[0] == res[1]);
     assert(res2[1] == res[0]);
 }
+@safe unittest
+{
+    string text = "GΛ̊TE ascii";
+    auto gb = gapbuffer(text, 10);
+
+    auto res = extractors.uWords(gb, 0.GrpmIdx, Direction.Front, 2);
+    assert(res.length == 2);
+    assert(res[0] == Subject(0.GrpmIdx, 3.GrpmIdx, "GΛ̊TE".to!BufferType));
+    assert(res[1] == Subject(5.GrpmIdx, 9.GrpmIdx, "ascii".to!BufferType));
+
+    auto res2 = extractors.uWords(gb, GrpmIdx(gb.length - 1), Direction.Back, 2);
+    assert(res2[0] == res[1]);
+    assert(res2[1] == res[0]);
+}
+
 
 // paragraphs
-unittest
+@safe unittest
 {
     import std.array: replace;
 
@@ -198,13 +229,12 @@ unittest
     auto gb = gapbuffer(text, 10);
     auto res = extractors.paragraphs(gb, 0.GrpmIdx, Direction.Front, 10);
     assert(res.length == 3);
-    writeln(res);
     assert(res[0] == Subject(0.GrpmIdx, 55.GrpmIdx, first.to!BufferType));
     assert(res[1] == Subject(57.GrpmIdx, 103.GrpmIdx, second.to!BufferType));
     assert(res[2] == Subject(105.GrpmIdx, 150.GrpmIdx, third.to!BufferType));
 }
 
-unittest
+@safe unittest
 {
     import std.array: replace;
 
@@ -216,7 +246,6 @@ unittest
     auto gb = gapbuffer(text, 10);
     auto res = extractors.paragraphs(gb, (gb.length - 1).GrpmIdx, Direction.Back, 10);
     assert(res.length == 3);
-    writeln(res);
     assert(res[0] == Subject(105.GrpmIdx, 151.GrpmIdx, third.to!BufferType));
     assert(res[1] == Subject(57.GrpmIdx, 103.GrpmIdx, second.to!BufferType));
     assert(res[2] == Subject(0.GrpmIdx, 55.GrpmIdx, first.to!BufferType));

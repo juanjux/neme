@@ -70,6 +70,7 @@ class OperationHandlers
         gb.lineCursorForward(GrpmCount(savedColumn - 1));
     }
 
+    // TODO: Factorize these two into one taking the extractor
     void wordLeft()
     {
         immutable cpos = gb.cursorPos;
@@ -83,16 +84,38 @@ class OperationHandlers
         }
         gb.cursorPos = (words[$-1].startPos).GrpmIdx;
     }
-    // TODO: uWordLeft
 
+    void uWordLeft()
+    {
+        immutable cpos = gb.cursorPos;
+        auto words = extractors.uWords(*gb, gb.cursorPos, Direction.Back, 1);
+        if (words.length == 0)
+            return;
+
+        if (cpos == words[$-1].startPos) {
+            // didn't move because it was already at the end of a word
+            words = extractors.uWords(*gb, gb.cursorPos, Direction.Back, 2);
+        }
+        gb.cursorPos = (words[$-1].startPos).GrpmIdx;
+    }
+    
     void wordRight()
     {
         auto currentChar = (*gb)[gb.cursorPos.to!ulong].to!BufferElement;
         immutable count = currentChar in globalSettings.wordSeparators ? 1 : 2;
-        auto words = extractors.words(*gb, gb.cursorPos, Direction.Front, count);
+        const words = extractors.words(*gb, gb.cursorPos, Direction.Front, count);
         gb.cursorPos = (words[$-1].startPos).GrpmIdx;
     }
-    // TODO: uWordRight
+
+    void uWordRight()
+    {
+        import std.uni: isWhite;
+
+        auto currentChar = (*gb)[gb.cursorPos.to!ulong].to!BufferElement;
+        immutable count = isWhite(currentChar) ? 1 : 2;
+        const words = extractors.uWords(*gb, gb.cursorPos, Direction.Front, count);
+        gb.cursorPos = (words[$-1].startPos).GrpmIdx;
+    }
 
     void lineStart()
     {

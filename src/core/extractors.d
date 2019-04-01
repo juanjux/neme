@@ -136,6 +136,31 @@ const(Subject)[] words(in GapBuffer gb, GrpmIdx startPos, Direction dir,
     return extract!isBoundary(gb, startPos, dir, count, predicate);
 }
 
+// Same as the Vim concept of words with 'W', only considering whitespace
+// characters as separators
+public @safe
+const(Subject)[] uWords(in GapBuffer gb, GrpmIdx startPos, Direction dir,
+                        ArraySize count, Predicate predicate = &All)
+{
+    import std.uni: isWhite;
+
+    bool isBoundary(in DList!BufferElement loaded, in BufferType curGrpm)
+    {
+        bool isWordChar = true;
+
+        foreach(BufferElement cp; curGrpm) {
+            if (isWhite(cp)) {
+                isWordChar = false;
+                break;
+            }
+        }
+        return !isWordChar;
+    }
+
+    return extract!isBoundary(gb, startPos, dir, count, predicate);
+}
+
+
 
 public @safe
 const(Subject)[] paragraphs(in GapBuffer gb, GrpmIdx startPos, Direction dir,

@@ -278,12 +278,18 @@ mainLoop: while(true) {
                 opHandlr.wordLeft();
                 savedColumn = gb.currentCol;
                 break;
-            // TODO: UWORD_LEFT
+            case Operations.UWORD_LEFT:
+                opHandlr.uWordLeft();
+                savedColumn = gb.currentCol;
+                break;
             case Operations.WORD_RIGHT:
                 opHandlr.wordRight();
                 savedColumn = gb.currentCol;
                 break;
-            // TODO: UWORD_RIGHT
+            case Operations.UWORD_RIGHT:
+                opHandlr.uWordRight();
+                savedColumn = gb.currentCol;
+                break;
             case Operations.LINE_START:
                 opHandlr.lineStart();
                 savedColumn = gb.currentCol;
