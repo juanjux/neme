@@ -6,7 +6,7 @@
 	"description": "Some day this will be an editor",
 	"copyright": "Copyright © 2017, Juan Jose Alvarez Martinez",
 	"license": "GPL-3.0",
-	"version": "0.0.9",
+	"version": "0.0.10",
 	"buildTypes": {},
 	"targetType": "executable",
 	"mainSourceFile": "src/app.d",

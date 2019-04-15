@@ -17,9 +17,8 @@ import neme.frontend.tui.vimish_layer;
 import extractors = neme.core.extractors;
 import neme.core.types;
 
-// import deimos.ncurses;
-
 enum BENCHMARK = false;
+Curses _curses;
 
 version(BENCHMARK)
 struct BenchData
@@ -62,265 +61,294 @@ struct BenchData
     }
 }
 
-int main(string[] args)
+class TUI
 {
-auto flog = new FileLogger("nemecurses.log");
-Curses.Config cfg = {
-    //disableEcho: true,
-    cursLevel: 0
-};
+    private:
 
-version(BENCHMARK)
-    immutable benchData = BenchData("bench.txt");
-auto curses = new Curses(cfg);
-
-void tuiExit(string text, int code)
-{
-        destroy(curses);
-        writeln(text);
-        exit(code);
-}
-scope(exit) {
     version(BENCHMARK)
-        benchData.scrRefreshWriteMean;
-    tuiExit("", 0);
-}
+        immutable _benchData = BenchData("bench.txt");
 
-append("bench.txt", "Starting benchmark----\n");
+    GapBuffer _gb;
+    UI _ui = void;
+    FileLogger _flog = void;
+    bool _mustLoadText;
+    long _currentLine;
 
-auto scr = curses.stdscr;
-auto ui = new UI(curses, scr);
+    // Used to save the last column resulting from user input (from cursor movement commands,
+    // horizontal cursor movement keys or searches) to restore it when moving across lines
+    GrpmCount _savedColumn;
 
-Button.Config buttonCfg = { alignment: Align.left };
-auto loadButton = new Button(ui, 1, 5, 1, 1, "Load", buttonCfg);
-auto exitButton = new Button(ui, 1, 5, 1, 6, "Exit", buttonCfg);
+    Button _loadButton = void;
+    Button _exitButton = void;
 
-// Textbox holds both the text and the linecol
-auto textBox = scr.subwin(scr.height - 4, scr.width - 2, 2, 1);
-immutable textAreaLines = textBox.height - 2;
-immutable textAreaCols = textBox.width - 5;
-auto textArea = textBox.subwin(textAreaLines, textAreaCols, 3, 5);
-auto lineCol = textBox.subwin(textBox.height, 4, 2, 1);
+    Window _textBox = void;
+    Window _textArea = void;
+    Window _lineCol = void;
+    Window _statusBar = void;
+    Window _statusMode = void;
+    Window _statusFile = void;
+    Window _statusLine = void;
+    Window _statusCol = void;
+    Window _cmdLine = void;
 
-// Status bar parent Window
-auto statusY = scr.height - 2;
-auto statusBar = scr.subwin(1, scr.width - 2, statusY, 1);
+    int _textAreaLines;
+    int _textAreaCols;
 
-auto modeWidth = 15;
-auto statusMode = statusBar.subwin(1, modeWidth, statusY, 1);
+    void createUI()
+    {
+        auto scr = _curses.stdscr;
+        _ui = new UI(_curses, scr);
 
-auto fileWidth = 20;
-auto statusFile = statusBar.subwin(1, fileWidth, statusY, modeWidth + 1);
+        Button.Config buttonCfg = { alignment: Align.left };
+        _loadButton = new Button(_ui, 1, 5, 1, 1, "Load", buttonCfg);
+        _exitButton = new Button(_ui, 1, 5, 1, 6, "Exit", buttonCfg);
 
-auto lineWidth = 15;
-auto statusLine = statusBar.subwin(1, lineWidth, statusY, modeWidth + fileWidth + 1);
+        // Textbox holds both the text and the linecol
+        _textBox = scr.subwin(scr.height - 4, scr.width - 2, 2, 1);
+        _textAreaLines = _textBox.height - 2;
+        _textAreaCols = _textBox.width - 5;
+        _textArea = _textBox.subwin(_textAreaLines, _textAreaCols, 3, 5);
+        _lineCol = _textBox.subwin(_textBox.height, 4, 2, 1);
 
-auto colWidth = 15;
-auto statusCol = statusBar.subwin(1, colWidth, statusY, modeWidth + fileWidth +
-        lineWidth + 1);
+        // Status bar parent Window
+        auto statusY = scr.height - 2;
+        _statusBar = scr.subwin(1, scr.width - 2, statusY, 1);
 
-auto cmdLineWidth = scr.width / 4;
-auto cmdLine = statusBar.subwin(1, cmdLineWidth, statusY, scr.width - cmdLineWidth - 5);
+        auto modeWidth = 15;
+        _statusMode = _statusBar.subwin(1, modeWidth, statusY, 1);
 
-bool mustLoadText;
-long currentLine;
-GapBuffer gb;
-// Used to save the last column resulting from user input (from cursor movement commands, 
-// horizontal cursor movement keys or searches) to restore it when moving across lines
-GrpmCount savedColumn;
+        auto fileWidth = 20;
+        _statusFile = _statusBar.subwin(1, fileWidth, statusY, modeWidth + 1);
 
-/+
-    ╔══════════════════════════════════════════════════════════════════════════════
-    ║ ⚑ Draw / redraw functions
-    ╚══════════════════════════════════════════════════════════════════════════════
-+/
+        auto lineWidth = 15;
+        _statusLine = _statusBar.subwin(1, lineWidth, statusY, modeWidth + fileWidth + 1);
 
-void updateStatusBar()
-{
-    ulong maxLines, curLineLength, curCol, maxCol;
+        auto colWidth = 15;
+        _statusCol = _statusBar.subwin(1, colWidth, statusY, modeWidth + fileWidth +
+                lineWidth + 1);
 
-    if (!gb.empty) {
-        curCol = gb.currentCol.to!int;
-        maxCol = gb.lineAt(gb.currentLine).length;
+        auto cmdLineWidth = scr.width / 4;
+        _cmdLine = _statusBar.subwin(1, cmdLineWidth, statusY, scr.width - cmdLineWidth - 5);
     }
 
-    statusMode.insert("COMMAND MODE | ");
-    statusFile.insert("./LICENSE | ");
-    statusLine.insert(format!"Ln %d/%d | "(currentLine + 1, gb.numLines + 1));
-    statusCol.insert(format!"Col %d/%d"(curCol, maxCol));
-    cmdLine.insert("CMD: _____");
+    void tuiExit(string text, int code)
+    {
+        if (text.length)
+            writeln(text);
+        exit(code);
+    }
 
-    statusMode.refresh;
-    statusFile.refresh;
-    statusLine.refresh;
-    statusCol.refresh;
-    cmdLine.refresh;
-}
+    void updateStatusBar()
+    {
+        ulong maxLines, curLineLength, curCol, maxCol;
 
-void fillText(GrpmIdx startPos)
-{
-    auto curLine = 0;
-    auto gbCurLine = gb.currentLine;
-    auto gbCurCol = gb.currentCol.to!int;
-    flog.info("Current col: ", gbCurCol);
-    auto gbStartPosLine = gb.lineNumAtPos(startPos.to!long);
-    auto lines = extractors.lines(gb, startPos, Direction.Front,
-                                    textAreaLines - 1);
+        if (!_gb.empty) {
+            curCol = _gb.currentCol.to!int;
+            maxCol = _gb.lineAt(_gb.currentLine).length;
+        }
 
-    foreach(ref line; lines) {
-        if ((gbStartPosLine + curLine) != gbCurLine) {
-            textArea.addstr(curLine, 0, line.text);
-        } else {
-            // Current line: draw cursor
-            if (line.text.length == 0) {
-                // Empty line, draw cursor at the start
-                textArea.addch(curLine, 0, ' ', Attr.reverse);
+        _statusMode.insert("COMMAND MODE | ");
+        _statusFile.insert("./LICENSE | ");
+
+        _statusLine.insert(format!"Ln %d/%d | "(_currentLine + 1, _gb.numLines + 1));
+        _statusCol.insert(format!"Col %d/%d"(curCol, maxCol));
+        _cmdLine.insert("CMD: _____");
+
+        _statusMode.refresh;
+        _statusFile.refresh;
+        _statusLine.refresh;
+        _statusCol.refresh;
+        _cmdLine.refresh;
+    }
+
+    void fillText(GrpmIdx startPos)
+    {
+        auto curLine = 0;
+        auto gbCurCol = _gb.currentCol.to!int;
+        _flog.info("Current col: ", gbCurCol);
+        auto gbStartPosLine = _gb.lineNumAtPos(startPos.to!long);
+        auto lines = extractors.lines(_gb, startPos, Direction.Front,
+                                        _textAreaLines - 1);
+
+        foreach(ref line; lines) {
+            if ((gbStartPosLine + curLine) != _gb.currentLine) {
+                _textArea.addstr(curLine, 0, line.text);
             } else {
-                for (int i=0; i<line.text.length; i++) {
-                    if (i == gbCurCol - 1) {
-                        textArea.addch(curLine, i, line.text[i], Attr.reverse);
-                    } else {
-                        textArea.addch(curLine, i, line.text[i]);
+                // Current line: draw cursor
+                if (line.text.length == 0) {
+                    // Empty line, draw cursor at the start
+                    _textArea.addch(curLine, 0, ' ', Attr.reverse);
+                } else {
+                    for (int i=0; i<line.text.length; i++) {
+                        if (i == gbCurCol - 1) {
+                            _textArea.addch(curLine, i, line.text[i], Attr.reverse);
+                        } else {
+                            _textArea.addch(curLine, i, line.text[i]);
+                        }
                     }
                 }
             }
+            ++curLine;
         }
-        ++curLine;
+    }
+
+    void updateTextArea()
+    {
+        GrpmIdx startPos;
+
+        if (_mustLoadText) {
+            startPos = 0.GrpmIdx;
+            _mustLoadText = false;
+        } else {
+            startPos = _gb.cursorPos;
+        }
+
+        fillText(startPos);
+        _textArea.refresh;
+    }
+
+    void drawBorders()
+    {
+        _lineCol.box('|', '-');
+        _textBox.box('|', '-');
+        _curses.stdscr.box('|', '-');
+    }
+
+    void updateScreen()
+    {
+        drawBorders;
+        _lineCol.refresh;
+        _textBox.refresh;
+        _statusBar.refresh;
+        updateTextArea;
+        updateStatusBar;
+        _curses.stdscr.refresh;
+    }
+
+    public:
+
+    this(FileLogger log)
+    {
+        _flog = log;
+    }
+
+    void run()
+    {
+        createUI;
+
+        version(BENCHMARK)
+            append("bench.txt", "Starting benchmark----\n");
+
+        auto opHandlr = new OperationHandlers(_flog);
+        // TODO: make this configurable
+        KeyboardLayer keyLayer = new VimishLayer();
+
+        /+
+        ╔════════════════════════════════════════════════════════════════════
+        ║ ⚑ Main loop
+        ╚════════════════════════════════════════════════════════════════════
+        +/
+        mainLoop: while(true) {
+            _ui.draw;
+
+            version(BENCHMARK) _benchData.startScreenRefresh;
+            updateScreen;
+            _curses.update;
+            version(BENCHMARK) _benchData.stopScreenRefresh;
+
+            WChar k = _curses.stdscr.getwch();
+            try {
+                _ui.keystroke(k);
+                _flog.info("KeyStroke: ", k);
+
+                Operations op = keyLayer.getOpForKey(k);
+                // TODO: add as OperationHandlers.do
+                // XXX repeat operations (like '5w'): take the repeat factor, the operation, and
+                // pass to it as a repeat argument
+                switch(op)
+                {
+                    case Operations.CHAR_LEFT:
+                        _gb.lineCursorBackward(1.GrpmIdx);
+                        _savedColumn = _gb.currentCol;
+                        break;
+                    case Operations.CHAR_RIGHT:
+                        _gb.lineCursorForward(1.GrpmIdx);
+                        _savedColumn = _gb.currentCol;
+                        break;
+                    case Operations.LINE_DOWN:
+                        opHandlr.lineDown(_currentLine, _savedColumn);
+                        break;
+                    case Operations.LINE_UP:
+                        opHandlr.lineUp(_currentLine, _savedColumn);
+                        break;
+                    case Operations.PAGE_DOWN:
+                        opHandlr.pageDown(_currentLine, _textAreaLines, _savedColumn);
+                        break;
+                    case Operations.PAGE_UP:
+                        opHandlr.pageUp(_currentLine, _textAreaLines, _savedColumn);
+                        break;
+                    case Operations.WORD_LEFT:
+                        opHandlr.wordLeft();
+                        _savedColumn = _gb.currentCol;
+                        break;
+                    case Operations.UWORD_LEFT:
+                        opHandlr.uWordLeft();
+                        _savedColumn = _gb.currentCol;
+                        break;
+                    case Operations.WORD_RIGHT:
+                        opHandlr.wordRight();
+                        _savedColumn = _gb.currentCol;
+                        break;
+                    case Operations.UWORD_RIGHT:
+                        opHandlr.uWordRight();
+                        _savedColumn = _gb.currentCol;
+                        break;
+                    case Operations.LINE_START:
+                        opHandlr.lineStart();
+                        _savedColumn = _gb.currentCol;
+                        break;
+                    case Operations.LINE_END:
+                        opHandlr.lineEnd();
+                        _savedColumn = _gb.currentCol;
+                        break;
+                    case Operations.QUIT:
+                        break mainLoop;
+                    default:
+                }
+
+            // Button handlers
+            } catch(Button.Signal s) {
+                if (s.sender == _loadButton) {
+                    import std.file: readText;
+                    _gb = gapbuffer(readText("LICENSE"));
+                    opHandlr.gb = &_gb;
+                    _mustLoadText = true;
+                }
+                else if (s.sender == _exitButton) {
+                    break mainLoop;
+                }
+                else {
+                    string msg = "Unknown signal received: " ~ s.to!string;
+                    _flog.error(msg);
+                    tuiExit(msg, 1);
+                }
+            } catch (NCException e) {
+                string msg2 = "Exception catched on signal processing: " ~ e.msg;
+                _flog.error(msg2);
+                tuiExit(msg2, 1);
+            }
+        }
     }
 }
 
-void updateTextArea()
+int main(string[] args)
 {
-    GrpmIdx startPos;
+    Curses.Config cfg = { cursLevel: 0 };
+    _curses = new Curses(cfg);
+    scope(exit) destroy(_curses);
 
-    if (mustLoadText) {
-        startPos = 0.GrpmIdx;
-        mustLoadText = false;
-    } else {
-        startPos = gb.cursorPos;
-    }
+    auto tui = new TUI(new FileLogger("nemecurses.log"));
+    tui.run();
 
-    fillText(startPos);
-    textArea.refresh;
-}
-
-void drawBorders()
-{
-    lineCol.box('|', '-');
-    textBox.box('|', '-');
-    scr.box('|', '-');
-}
-
-void updateScreen()
-{
-    drawBorders;
-    lineCol.refresh;
-    textBox.refresh;
-    statusBar.refresh;
-    updateTextArea;
-    updateStatusBar;
-    scr.refresh;
-}
-
-auto opHandlr = new OperationHandlers(flog);
-// TODO: make this configurable
-KeyboardLayer keyLayer = new VimishLayer();
-
-/+
-    ╔══════════════════════════════════════════════════════════════════════════════
-    ║ ⚑ Main loop
-    ╚══════════════════════════════════════════════════════════════════════════════
-+/
-mainLoop: while(true) {
-    ui.draw;
-
-    version(BENCHMARK) benchData.startScreenRefresh;
-    updateScreen;
-    curses.update;
-    version(BENCHMARK) benchData.stopScreenRefresh;
-
-    WChar k = scr.getwch();
-    try {
-        ui.keystroke(k);
-        flog.info("KeyStroke: ", k);
-
-        Operations op = keyLayer.getOpForKey(k);
-        // TODO: add as OperationHandlers.do
-        // XXX repeat operations (like '5w'): take the repeat factor, the operation, and 
-        // pass to it as a repeat argument
-        switch(op) 
-        {
-            case Operations.CHAR_LEFT:
-                gb.lineCursorBackward(1.GrpmIdx);
-                savedColumn = gb.currentCol;
-                break;
-            case Operations.CHAR_RIGHT:
-                gb.lineCursorForward(1.GrpmIdx);
-                savedColumn = gb.currentCol;
-                break;
-            case Operations.LINE_DOWN:
-                opHandlr.lineDown(currentLine, savedColumn);
-                break;
-            case Operations.LINE_UP:
-                opHandlr.lineUp(currentLine, savedColumn);
-                break;
-            case Operations.PAGE_DOWN:
-                opHandlr.pageDown(currentLine, textAreaLines, savedColumn);
-                break;
-            case Operations.PAGE_UP:
-                opHandlr.pageUp(currentLine, textAreaLines, savedColumn);
-                break;
-            case Operations.WORD_LEFT:
-                opHandlr.wordLeft();
-                savedColumn = gb.currentCol;
-                break;
-            case Operations.UWORD_LEFT:
-                opHandlr.uWordLeft();
-                savedColumn = gb.currentCol;
-                break;
-            case Operations.WORD_RIGHT:
-                opHandlr.wordRight();
-                savedColumn = gb.currentCol;
-                break;
-            case Operations.UWORD_RIGHT:
-                opHandlr.uWordRight();
-                savedColumn = gb.currentCol;
-                break;
-            case Operations.LINE_START:
-                opHandlr.lineStart();
-                savedColumn = gb.currentCol;
-                break;
-            case Operations.LINE_END:
-                opHandlr.lineEnd();
-                savedColumn = gb.currentCol;
-                break;
-            case Operations.QUIT:
-                break mainLoop;
-            default:
-        }
-
-    // Button handlers
-    } catch(Button.Signal s) {
-        if (s.sender == loadButton) {
-            import std.file: readText;
-            gb = gapbuffer(readText("LICENSE"));
-            opHandlr.gb = &gb;
-            mustLoadText = true;
-        }
-        else if (s.sender == exitButton) {
-            break mainLoop;
-        }
-        else {
-            string msg = "Unknown signal received: " ~ s.to!string;
-            flog.error(msg);
-            tuiExit(msg, 1);
-        }
-    } catch (NCException e) {
-        string msg2 = "Exception catched on signal processing: " ~ e.msg;
-        flog.error(msg2);
-        tuiExit(msg2, 1);
-    }
-}
-
-return 0;
+    return 0;
 }
