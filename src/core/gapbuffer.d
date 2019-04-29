@@ -544,8 +544,8 @@ struct GapBuffer
             return cursorPos;
 
         ImGrpmCount actualToMoveGrpm = min(
-            count, 
-            contentAfterGapGrpmLen, 
+            count,
+            contentAfterGapGrpmLen,
             GrpmIdx(contentGrpmLen - 1)
         );
         immutable ImArrayIdx idxDiff = idxDiffUntilGrapheme(gapEnd, actualToMoveGrpm,
@@ -581,7 +581,6 @@ struct GapBuffer
             return cursorPos;
         }
 
-        // XXX hacer lo mismo
         ImGrpmCount actualToMoveGrpm = min(count, contentBeforeGapGrpmLen);
         immutable ImArrayIdx idxDiff = idxDiffUntilGrapheme(gapStart, actualToMoveGrpm,
                 Direction.Back);
@@ -604,7 +603,7 @@ struct GapBuffer
         return cursorPos;
     }
 
-    /** 
+    /**
     * Moves the cursor forward without changing line.
     * Params:
     *   count = the number of places to move to the right
@@ -612,25 +611,28 @@ struct GapBuffer
     public @safe
     ImGrpmIdx lineCursorForward(GrpmCount count)
     {
-        if (count <= 0 || cursorPos == contentGrpmLen - 1) 
+        if (count <= 0 || cursorPos == contentGrpmLen - 1)
             return cursorPos;
 
         // FIXME: currentLine can be slow
         immutable curLine = currentLine;
         immutable thisLineEnd = lineEndPos(curLine);
 
-        if (curLine > _newLines.length) 
+        if (curLine == _newLines.length + 1) {
+            // in last line not ended in \n: safely go forward
             return cursorForward(count.GrpmCount);
+        }
 
         immutable nextLineStart = lineStartPos(curLine + 1);
-        if ((cursorPos + count) >= nextLineStart) {
+        if ((nextLineStart != -1) && (cursorPos + count) >= nextLineStart) {
+            // pass the next \n, go to the pos previous to the last \n
             immutable diff = curLine < numLines? 1: 0;
             return cursorForward(((thisLineEnd - diff) - cursorPos).GrpmCount);
         }
         return cursorForward(count.GrpmCount);
     }
 
-    /** 
+    /**
     * Moved the cursor backwards without changing line.
     * Params:
     *   count = the number of places to move to the left
@@ -644,7 +646,7 @@ struct GapBuffer
 
         // FIXME: currentLine can be slow
         immutable curLine = currentLine;
-        if (curLine == 0) {
+        if (curLine == 1) {
             return cursorBackward(count);
         }
 
@@ -662,7 +664,7 @@ struct GapBuffer
 
     /**
      * Delete count chars to the left of the cursor position, moving the gap (and the cursor) back
-     * (typically the effect of the backspace key). Note that this wont delete the character 
+     * (typically the effect of the backspace key). Note that this wont delete the character
      * under the cursor.
      *
      * Params:
@@ -990,16 +992,26 @@ struct GapBuffer
         return ArraySubject(startPos, endPos, content[startPos..endPos]);
     }
 
+    // XXX test for unexisting line
     public @safe
     const(BufferType) lineAt(ArrayIdx linenum) const
     {
-        return this[lineStartPos(linenum)..lineEndPos(linenum)];
+        immutable lineStart = lineStartPos(linenum);
+        if (lineStart == -1) return "";
+        immutable lineEnd = lineEndPos(linenum);
+        if (lineEnd == -1) return "";
+        return this[lineStart..lineEnd];
     }
 
-    /// Get the start position of the specified line. Doesn't move the cursor.
+    /// Get the start position of the specified line or -1 if the line
+    // doesn't exist. Doesn't move the cursor.
     public @safe
     GrpmIdx lineStartPos(ArrayIdx lineNum) const
     {
+        if (lineNum > numLines) {
+            return (-1).GrpmIdx;
+        }
+
         if (lineNum <= 1 || !contentCPLen || !numLines || !_newLines.length) {
             return 0.GrpmIdx;
         }
@@ -1011,14 +1023,18 @@ struct GapBuffer
 
         // Get the previous line ending position
         GrpmIdx grpmPrevLinePos = CPPos2GrpmPos(_newLines[prevLineIdx]);
-        auto xxx = min(GrpmIdx(grpmPrevLinePos + 1), contentGrpmLen);
         return min(GrpmIdx(grpmPrevLinePos + 1), GrpmIdx(contentGrpmLen - 1));
     }
 
     /// Get the end position of the specified line. Doesn't move the cursor.
+    /// Returns -1 if the line doesn't exists.
     public @safe
     GrpmIdx lineEndPos(ArrayIdx linenum) const
     {
+        if (linenum > numLines) {
+            return (-1).GrpmIdx;
+        }
+
         if (linenum < 1 || !contentCPLen || !numLines) {
             return 0.GrpmIdx;
         }
@@ -1037,29 +1053,40 @@ struct GapBuffer
         if (!contentCPLen || !numLines) {
             return 0L;
         }
-        // Special case: if the cursor is on a \n, col is always 1
-        if (this[cursorPos.to!ulong] == "\n")
-            return 1;
-
-        return cursorPos - lineStartPos(currentLine) + 1;
+        // If the cursor is on a \n, col is always the previous one
+        // (so 0 offset, since columns start at 1, means that)
+        immutable diff = this[cursorPos.to!ulong] == "\n"? 0: 1;
+        immutable lineStart = lineStartPos(currentLine);
+        assert(lineStart != -1);
+        return cursorPos - lineStart + diff;
     }
 
     // FIXME: unittest
+    // XXX and test for non existing lines
     public @safe
     GrpmIdx lineLength(ArrayIdx linenum) const
     {
-        return (lineEndPos(linenum) - lineStartPos(linenum)).GrpmIdx;
+        immutable lineEnd = lineEndPos(linenum);
+        if (lineEnd == -1) return 0.GrpmIdx;
+        immutable lineStart = lineStartPos(linenum);
+        if (lineStart == -1) return 0.GrpmIdx;
+        return (lineEnd - lineStart).GrpmIdx;
     }
 
     /// Move the cursor to the start of the specified line
+    // XXX test for unexisting line
     public @safe
     GrpmIdx cursorToLine(ArrayIdx linenum)
     {
-        cursorPos(lineStartPos(linenum));
+        immutable lineStart = lineStartPos(linenum);
+        if (lineStart != -1) {
+            cursorPos(lineStartPos(linenum));
+        }
         return cursorPos;
     }
 
     /// Delete the specified line. Moves the cursor.
+    /// XXX test for unexisting line
     public @safe
     void deleteLine(ArrayIdx linenum)
     {
@@ -1076,7 +1103,10 @@ struct GapBuffer
         }
 
         auto delStart = lineStartPos(linenum);
-        auto delEnd = (lineEndPos(linenum) + 1).GrpmIdx;
+        if (delStart == -1) return;
+        auto lineEnd = lineEndPos(linenum);
+        if (lineEnd == -1) return;
+        auto delEnd = (lineEnd + 1).GrpmIdx;
         deleteBetween(delStart, delEnd);
         indexNewLines;
     }
@@ -1097,17 +1127,19 @@ struct GapBuffer
 
     // FIXME: this is a logic mess
     /**
-     * Returns the current line inside the buffer (0-based index).
+     * Returns the current line inside the buffer (1-based index).
      * Doesn't move the cursor.
      */
     public @safe
     ArrayIdx lineNumAtPos(ArrayIdx pos) const
     {
-        if (pos == 0 || _newLines.length < 2 || _averageLineLenCP == 0)
+        if (pos == 0 || _newLines.length < 1 || _averageLineLenCP == 0) {
             return 1;
+        }
 
-        if (pos >= contentCPLen)
+        if (pos >= contentCPLen) {
             return numLines;
+        }
 
         ArrayIdx aprox = min(_newLines.length - 1, pos / _averageLineLenCP);
 

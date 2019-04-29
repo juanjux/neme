@@ -579,6 +579,40 @@ debug
     }
 }
 
+// lineNumAtPos
+@safe unittest
+{
+    string text =     "01\n34\n67\n90\n";
+    string combtext = "01\n34\n67\n90\nr̈a⃑⊥ b⃑\n\n";
+
+    foreach(txt; [text, combtext]) {
+        auto gb = gapbuffer(txt, 10);
+
+        assert(gb.lineNumAtPos(0.ArrayIdx) == 1);
+        assert(gb.lineNumAtPos(1.ArrayIdx) == 1);
+        assert(gb.lineNumAtPos(2.ArrayIdx) == 1);
+        assert(gb.lineNumAtPos(3.ArrayIdx) == 2);
+        assert(gb.lineNumAtPos(5.ArrayIdx) == 2);
+        assert(gb.lineNumAtPos(6.ArrayIdx) == 3);
+        assert(gb.lineNumAtPos(8.ArrayIdx) == 3);
+        assert(gb.lineNumAtPos(9.ArrayIdx) == 4);
+        assert(gb.lineNumAtPos(11.ArrayIdx) == 4);
+        assert(gb.lineNumAtPos(999.ArrayIdx) == gb.numLines);
+
+        if (txt == combtext) {
+            assert(gb.lineNumAtPos(12.ArrayIdx) == 5);
+        } else {
+            assert(gb.lineNumAtPos(12.ArrayIdx) == 4);
+        }
+    }
+}
+unittest
+{
+    dstring text = "1234567890\nNEXT";
+    auto gb = gapbuffer(text, 10);
+    assert(gb.lineNumAtPos(999) == 2);
+}
+
 // lineCursorForward
 @safe unittest
 {
@@ -657,31 +691,32 @@ debug
 
     text = "123\n";
     gb = gapbuffer(text, 10);
-    assert(gb.cursorPos == 0.GrpmCount);
+    assert(gb.cursorPos == 0.GrpmCount); // 1
     assert(gb.currentCol == 1.GrpmCount);
 
     gb.lineCursorForward(1.GrpmCount);
-    assert(gb.cursorPos == 1.GrpmCount);
+    assert(gb.cursorPos == 1.GrpmCount); // 2
     assert(gb.currentCol == 2.GrpmCount);
 
     gb.lineCursorForward(1.GrpmCount);
-    assert(gb.cursorPos == 2.GrpmCount);
+    assert(gb.cursorPos == 2.GrpmCount); // 3
     assert(gb.currentCol == 3.GrpmCount);
 
     gb.lineCursorForward(1.GrpmCount);
-    assert(gb.cursorPos == 3.GrpmCount);
+    assert(gb.cursorPos == 3.GrpmCount); // 3
     assert(gb.currentCol == 3.GrpmCount);
 
     gb.lineCursorForward(1.GrpmCount);
-    assert(gb.cursorPos == 3.GrpmCount);
+    assert(gb.cursorPos == 3.GrpmCount); // ditto
     assert(gb.currentCol == 3.GrpmCount);
 
     gb.lineCursorForward(1000.GrpmCount);
-    assert(gb.cursorPos == 3.GrpmCount);
+    assert(gb.cursorPos == 3.GrpmCount); // ditto
     assert(gb.currentCol == 3.GrpmCount);
 }
 
 // lineCursorBackward
+// XXX check also currentCol!
 @safe unittest
 {
     dstring text     = "1234567890\nNEXT";
@@ -693,10 +728,14 @@ debug
 
         gb.lineCursorBackward(0.GrpmCount);
         assert(gb.cursorPos == 0);
+        assert(gb.currentCol = 1);
         gb.lineCursorBackward(1000.GrpmCount);
         assert(gb.cursorPos == 0);
+
+        // next line
         gb.cursorForward(100.GrpmCount);
         assert(gb.cursorPos == 14);
+
         gb.lineCursorBackward(0.GrpmCount);
         assert(gb.cursorPos == 14); // T
         gb.lineCursorBackward(1.GrpmCount);
@@ -1097,34 +1136,6 @@ debug
     assert(gb._averageLineLenCP == 0);
 }
 
-// lineNumAtPos
-@safe unittest
-{
-    string text =     "01\n34\n67\n90\n";
-    string combtext = "01\n34\n67\n90\nr̈a⃑⊥ b⃑\n\n";
-
-    foreach(txt; [text, combtext]) {
-        auto gb = gapbuffer(txt, 10);
-
-        assert(gb.lineNumAtPos(0.ArrayIdx) == 1);
-        assert(gb.lineNumAtPos(1.ArrayIdx) == 1);
-        assert(gb.lineNumAtPos(2.ArrayIdx) == 1);
-        assert(gb.lineNumAtPos(3.ArrayIdx) == 2);
-        assert(gb.lineNumAtPos(5.ArrayIdx) == 2);
-        assert(gb.lineNumAtPos(6.ArrayIdx) == 3);
-        assert(gb.lineNumAtPos(8.ArrayIdx) == 3);
-        assert(gb.lineNumAtPos(9.ArrayIdx) == 4);
-        assert(gb.lineNumAtPos(11.ArrayIdx) == 4);
-        assert(gb.lineNumAtPos(999.ArrayIdx) == gb.numLines);
-
-        if (txt == combtext) {
-            assert(gb.lineNumAtPos(12.ArrayIdx) == 5);
-        } else {
-            assert(gb.lineNumAtPos(12.ArrayIdx) == 4);
-        }
-    }
-}
-
 // currentLine
 @safe unittest
 {
@@ -1236,8 +1247,8 @@ debug
     assert(gb.lineStartPos(1) == 0);
     assert(gb.lineStartPos(2) == 3);
     assert(gb.lineStartPos(3) == 6);
-    assert(gb.lineStartPos(4) == 6);
-    assert(gb.lineStartPos(100) == 6);
+    assert(gb.lineStartPos(4) == -1);
+    assert(gb.lineStartPos(100) == -1);
 
     // _newLines: [0:2, 1:6, 2:8, 3:18, 4:20]
     assert(cgb.lineStartPos(0) == 0);
@@ -1246,13 +1257,13 @@ debug
     assert(cgb.lineStartPos(3) == 6);
     assert(cgb.lineStartPos(4) == 7);
     assert(cgb.lineStartPos(5) == 13);
-    assert(cgb.lineStartPos(6) == 13);
-    assert(cgb.lineStartPos(100) == 13);
+    assert(cgb.lineStartPos(6) == -1);
+    assert(cgb.lineStartPos(100) == -1);
 
     assert(ngb.lineStartPos(0) == 0);
     assert(ngb.lineStartPos(1) == 0);
-    assert(ngb.lineStartPos(2) == 0);
-    assert(ngb.lineStartPos(100) == 0);
+    assert(ngb.lineStartPos(2) == -1);
+    assert(ngb.lineStartPos(100) == -1);
 
     gb = gapbuffer("01\n34\npok");
     assert(gb.numLines == 3);
@@ -1291,7 +1302,7 @@ debug
     assert(gb.lineEndPos(2) == 5);
     assert(gb.lineEndPos(3) == 6);
     assert(gb.lineEndPos(4) == 9);
-    assert(gb.lineEndPos(100) == 9);
+    assert(gb.lineEndPos(100) == -1);
 
     assert(cgb.lineEndPos(0) == 0);
     assert(cgb.lineEndPos(1) == 2);
@@ -1299,12 +1310,12 @@ debug
     assert(cgb.lineEndPos(3) == 6);
     assert(cgb.lineEndPos(4) == 12);
     assert(cgb.lineEndPos(5) == 15);
-    assert(cgb.lineEndPos(100) == 15);
+    assert(cgb.lineEndPos(100) == -1);
 
     assert(ngb.lineEndPos(0) == 0);
     assert(ngb.lineEndPos(1) == 2);
-    assert(ngb.lineEndPos(2) == 2);
-    assert(ngb.lineEndPos(100) == 2);
+    assert(ngb.lineEndPos(2) == -1);
+    assert(ngb.lineEndPos(100) == -1);
 
                   //1   2   3
                   //012 345 678
@@ -1457,15 +1468,21 @@ debug
     assert(gb.cursorPos == 6);
     gb.cursorToLine(4);
     assert(gb.cursorPos == 6);
-    gb.cursorToLine(10);
+    gb.cursorToLine(10); // doesnt exists, dont change cursor
     assert(gb.cursorPos == 6);
+
+    gb.cursorToLine(2);
+    assert(gb.cursorPos == 3);
+    gb.cursorToLine(10); // ditto
+    assert(gb.cursorPos == 3);
+
 
     cgb.cursorToLine(4);
     assert(cgb.cursorPos == 7);
-    cgb.cursorToLine(5);
-    assert(cgb.cursorPos == 12);
-    cgb.cursorToLine(100);
-    assert(cgb.cursorPos == 12);
+    cgb.cursorToLine(5); // doesnt exist, dont change cursor
+    assert(cgb.cursorPos == 7);
+    cgb.cursorToLine(100); // ditto
+    assert(cgb.cursorPos == 7);
 }
 
 // deleteLine

@@ -48,36 +48,36 @@ class OperationHandlers
         this.flog = flog;
     }
 
-    void lineDown(ref long currentLine, const GrpmCount savedColumn)
+    void lineDown(ref long currentLine, const GrpmCount savedCol)
     {
         if (gb == null) return;
         currentLine = min(gb.numLines - 1, currentLine + 1);
         gb.cursorToLine(currentLine + 1);
-        gb.lineCursorForward(GrpmCount(savedColumn - 1));
+        gb.lineCursorForward(GrpmCount(savedCol - 1));
     }
 
-    void lineUp(ref long currentLine, const GrpmCount savedColumn)
+    void lineUp(ref long currentLine, const GrpmCount savedCol)
     {
         if (gb == null) return;
         currentLine = max(0, currentLine - 1);
         gb.cursorToLine(currentLine + 1);
-        gb.lineCursorForward(GrpmCount(savedColumn - 1));
+        gb.lineCursorForward(GrpmCount(savedCol - 1));
     }
 
-    void pageDown(ref long currentLine, const long textAreaLines, const GrpmCount savedColumn)
+    void pageDown(ref long currentLine, const long textAreaLines, const GrpmCount savedCol)
     {
         if (gb == null) return;
         currentLine = min(gb.numLines - 1, currentLine + textAreaLines);
         gb.cursorToLine(currentLine + 1);
-        gb.lineCursorForward(GrpmCount(savedColumn - 1));
+        gb.lineCursorForward(GrpmCount(savedCol - 1));
     }
 
-    void pageUp(ref long currentLine, const long textAreaLines, const GrpmCount savedColumn)
+    void pageUp(ref long currentLine, const long textAreaLines, const GrpmCount savedCol)
     {
         if (gb == null) return;
         currentLine = max(0, currentLine - textAreaLines);
         gb.cursorToLine(currentLine + 1);
-        gb.lineCursorForward(GrpmCount(savedColumn - 1));
+        gb.lineCursorForward(GrpmCount(savedCol - 1));
     }
 
     // TODO: Factorize these two into one taking the extractor
@@ -88,7 +88,7 @@ class OperationHandlers
         if (words.length == 0)
             return;
 
-        if (cpos == words[$-1].startPos) { 
+        if (cpos == words[$-1].startPos) {
             // didn't move because it was already at the end of a word
             words = extractors.words(*gb, gb.cursorPos, Direction.Back, 2);
         }
@@ -108,7 +108,7 @@ class OperationHandlers
         }
         gb.cursorPos = (words[$-1].startPos).GrpmIdx;
     }
-    
+
     void wordRight()
     {
         auto currentChar = (*gb)[gb.cursorPos.to!ulong].to!BufferElement;
@@ -135,5 +135,24 @@ class OperationHandlers
     void lineEnd()
     {
         gb.cursorPos = gb.lineEndPos(gb.currentLine);
+    }
+
+    void jumpToCharRight(long currentLine, const GrpmCount savedCol,
+            BufferElement t)
+    {
+        auto line = extractors.lines(*gb, GrpmIdx(gb.cursorPos+1),
+                Direction.Front, 1);
+        // XXX here
+        flog.info("XXX line: ", line.text);
+
+        foreach(i, c; line.text) {
+            if (c == t) {
+                flog.info("XXX encontrado: ", i);
+                break;
+            }
+            flog.info("XXX no encontrado: ", c);
+        }
+
+        flog.info("XXX line: ", line.text);
     }
 }

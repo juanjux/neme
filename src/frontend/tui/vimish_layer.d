@@ -44,15 +44,18 @@ class VimishLayer : KeyboardLayer
             WChar(360, true): Operations.LINE_END, // end
             WChar('$'): Operations.LINE_END,
 
+            // XXX change wchar
+            WChar('x'): Operations.JUMPTO_CHAR_RIGHT,
+
             WChar('Q'): Operations.QUIT,
         ];
     }
 
-    override public pure 
+    override public pure
     Operations getOpForKey(WChar key)
     {
         auto op = key in key2Ops;
-        if (op != null) 
+        if (op != null)
             return *op;
 
         return Operations.UNKNOWN;

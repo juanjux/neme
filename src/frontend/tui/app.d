@@ -257,6 +257,7 @@ class TUI
             version(BENCHMARK) _benchData.stopScreenRefresh;
 
             WChar k = _curses.stdscr.getwch();
+
             try {
                 _ui.keystroke(k);
                 _flog.info("KeyStroke: ", k);
@@ -313,6 +314,9 @@ class TUI
                         break;
                     case Operations.QUIT:
                         break mainLoop;
+                    case Operations.JUMPTO_CHAR_RIGHT:
+                        opHandlr.jumpToCharRight(_currentLine, _savedColumn, 'e');
+                        break;
                     default:
                 }
 
