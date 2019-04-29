@@ -505,8 +505,7 @@ struct GapBuffer
     /**
      * Returns the cursor position. Starts at 0.
      */
-    // XXX restore pure nothrow
-    public @property @safe
+    public pure nothrow @property @safe
     GrpmIdx cursorPos() const
     {
         return max(0.GrpmIdx,
@@ -992,15 +991,21 @@ struct GapBuffer
         return ArraySubject(startPos, endPos, content[startPos..endPos]);
     }
 
-    // XXX test for unexisting line
     public @safe
     const(BufferType) lineAt(ArrayIdx linenum) const
     {
+        if (linenum <= 0)
+            return "";
         immutable lineStart = lineStartPos(linenum);
-        if (lineStart == -1) return "";
+        if (lineStart == -1)
+            return "";
         immutable lineEnd = lineEndPos(linenum);
-        if (lineEnd == -1) return "";
-        return this[lineStart..lineEnd];
+        if (lineEnd == -1)
+            return "";
+
+        // Include the last char only if the line doesn't end in \n
+        immutable diff = this[lineEnd] != "\n"? 1: 0;
+        return this[lineStart..GrpmIdx(lineEnd + diff)];
     }
 
     /// Get the start position of the specified line or -1 if the line
@@ -1066,15 +1071,24 @@ struct GapBuffer
     public @safe
     GrpmIdx lineLength(ArrayIdx linenum) const
     {
-        immutable lineEnd = lineEndPos(linenum);
-        if (lineEnd == -1) return 0.GrpmIdx;
+        if (linenum == 0)
+            return 0.GrpmIdx;
+
+        auto lineEnd = lineEndPos(linenum);
+        if (lineEnd == -1)
+            return 0.GrpmIdx;
+
         immutable lineStart = lineStartPos(linenum);
-        if (lineStart == -1) return 0.GrpmIdx;
+        if (lineStart == -1)
+            return 0.GrpmIdx;
+
+        if (this[lineEnd] != "\n") {
+            ++lineEnd;
+        }
         return (lineEnd - lineStart).GrpmIdx;
     }
 
     /// Move the cursor to the start of the specified line
-    // XXX test for unexisting line
     public @safe
     GrpmIdx cursorToLine(ArrayIdx linenum)
     {
@@ -1086,7 +1100,6 @@ struct GapBuffer
     }
 
     /// Delete the specified line. Moves the cursor.
-    /// XXX test for unexisting line
     public @safe
     void deleteLine(ArrayIdx linenum)
     {

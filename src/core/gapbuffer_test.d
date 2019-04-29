@@ -716,7 +716,6 @@ unittest
 }
 
 // lineCursorBackward
-// XXX check also currentCol!
 @safe unittest
 {
     dstring text     = "1234567890\nNEXT";
@@ -728,31 +727,48 @@ unittest
 
         gb.lineCursorBackward(0.GrpmCount);
         assert(gb.cursorPos == 0);
-        assert(gb.currentCol = 1);
+        assert(gb.currentCol == 1);
+
         gb.lineCursorBackward(1000.GrpmCount);
         assert(gb.cursorPos == 0);
+        assert(gb.currentCol == 1);
 
         // next line
         gb.cursorForward(100.GrpmCount);
         assert(gb.cursorPos == 14);
+        assert(gb.currentCol == 4);
 
         gb.lineCursorBackward(0.GrpmCount);
         assert(gb.cursorPos == 14); // T
+        assert(gb.currentCol == 4);
+
         gb.lineCursorBackward(1.GrpmCount);
         assert(gb.cursorPos == 13); // X
+        assert(gb.currentCol == 3);
+
         gb.lineCursorBackward(1.GrpmCount);
         assert(gb.cursorPos == 12); // E
+        assert(gb.currentCol == 2);
+
         gb.lineCursorBackward(1.GrpmCount);
         assert(gb.cursorPos == 11); // N
+        assert(gb.currentCol == 1);
+
         gb.lineCursorBackward(1000.GrpmCount);
         assert(gb.cursorPos == 11); // N again
+        assert(gb.currentCol == 1);
 
         gb.cursorBackward(1.GrpmCount);
         assert(gb.cursorPos == 10); // \n
+        assert(gb.currentCol == 10);
+
         gb.lineCursorBackward(1.GrpmCount);
         assert(gb.cursorPos == 9); // 0
+        assert(gb.currentCol == 10);
+
         gb.lineCursorBackward(1000.GrpmCount);
         assert(gb.cursorPos == 0); // 1
+        assert(gb.currentCol == 1);
     }
 }
 
@@ -1442,6 +1458,71 @@ unittest
     cgb.cursorForward(1000.GrpmIdx);
 }
 
+// lineAt
+@safe unittest
+{
+    string text     = "01\n34\n\n";
+    string combtext = "01\n34\n\nr̈a⃑⊥ b⃑\n";
+    string nonl     = "abc";
+
+    auto gb = gapbuffer(text, 10);
+    auto cgb = gapbuffer(combtext, 10);
+    auto ngb = gapbuffer(nonl, 10);
+
+    assert(gb.lineAt(0) == "");
+    assert(gb.lineAt(1000) == "");
+    assert(gb.lineAt(1) == "01");
+    assert(gb.lineAt(2) == "34");
+    assert(gb.lineAt(3) == "");
+    assert(gb.lineAt(4) == "");
+
+    assert(cgb.lineAt(0) == "");
+    assert(cgb.lineAt(1000) == "");
+    assert(cgb.lineAt(1) == "01");
+    assert(cgb.lineAt(2) == "34");
+    assert(cgb.lineAt(3) == "");
+    assert(cgb.lineAt(4) == "r̈a⃑⊥ b⃑");
+    assert(cgb.lineAt(5) == "");
+
+    assert(ngb.lineAt(0) == "");
+    assert(ngb.lineAt(1000) == "");
+    assert(ngb.lineAt(1) == "abc");
+    assert(ngb.lineAt(2) == "");
+}
+
+// lineLength
+@safe unittest
+{
+    string text     = "01\n345\n\n6\n";
+    string combtext = "01\n345\n\n6\nr̈a⃑⊥ b⃑\n";
+    string nonl     = "abc";
+
+    auto gb = gapbuffer(text, 10);
+    auto cgb = gapbuffer(combtext, 10);
+    auto ngb = gapbuffer(nonl, 10);
+
+    assert(gb.lineLength(1000) == 0);
+    assert(gb.lineLength(0) == 0);
+    assert(gb.lineLength(1) == 2);
+    assert(gb.lineLength(2) == 3);
+    assert(gb.lineLength(3) == 0);
+    assert(gb.lineLength(4) == 1);
+    assert(gb.lineLength(5) == 0);
+
+    assert(cgb.lineLength(1000) == 0);
+    assert(cgb.lineLength(0) == 0);
+    assert(cgb.lineLength(1) == 2);
+    assert(cgb.lineLength(2) == 3);
+    assert(cgb.lineLength(3) == 0);
+    assert(cgb.lineLength(4) == 1);
+    assert(cgb.lineLength(5) == 5);
+
+    assert(ngb.lineLength(0) == 0);
+    assert(ngb.lineLength(1) == 3);
+    assert(ngb.lineLength(2) == 0);
+    assert(ngb.lineLength(1000) == 0);
+}
+
 // cursorToLine
 @safe unittest
 {
@@ -1496,6 +1577,8 @@ unittest
     auto gb = gapbuffer(text, 10);
     auto ngb = gapbuffer(nonl, 10);
 
+    ngb.deleteLine(100);
+    assert(ngb.content.to!string == nonl);
     ngb.deleteLine(0);
     assert(ngb.content.to!string == nonl);
     ngb.deleteLine(1);
@@ -1505,6 +1588,8 @@ unittest
     ngb.deleteLine(100);
     assert(ngb.content.to!string == nonl);
 
+    gb.deleteLine(100);
+    assert(gb.content.to!string == text);
     gb.deleteLine(1);
     assert(gb.content.to!string == "34\n\n");
     gb.deleteLine(1);
