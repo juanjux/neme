@@ -183,6 +183,10 @@ class TUI
                         if (i == gbCurCol - 1) {
                             _textArea.addch(curLine, i, line.text[i], Attr.reverse);
                         } else {
+                            // XXX fixme, this crash if the window is small
+                            //_flog.info("XXX curLine: ", curLine);
+                            //_flog.info("XXX lineIdx: ", i);
+                            //_flog.info("XXX line.text[i]: ", line.text[i]);
                             _textArea.addch(curLine, i, line.text[i]);
                         }
                     }
@@ -266,59 +270,61 @@ class TUI
                 // TODO: add as OperationHandlers.do
                 // XXX repeat operations (like '5w'): take the repeat factor, the operation, and
                 // pass to it as a repeat argument
+                bool updateCol = true;
                 switch(op)
                 {
                     case Operations.CHAR_LEFT:
                         _gb.lineCursorBackward(1.GrpmIdx);
-                        _savedColumn = _gb.currentCol;
                         break;
                     case Operations.CHAR_RIGHT:
                         _gb.lineCursorForward(1.GrpmIdx);
-                        _savedColumn = _gb.currentCol;
                         break;
                     case Operations.LINE_DOWN:
                         opHandlr.lineDown(_currentLine, _savedColumn);
+                        updateCol = false;
                         break;
                     case Operations.LINE_UP:
                         opHandlr.lineUp(_currentLine, _savedColumn);
+                        updateCol = false;
                         break;
                     case Operations.PAGE_DOWN:
                         opHandlr.pageDown(_currentLine, _textAreaLines, _savedColumn);
+                        updateCol = false;
                         break;
                     case Operations.PAGE_UP:
                         opHandlr.pageUp(_currentLine, _textAreaLines, _savedColumn);
+                        updateCol = false;
                         break;
                     case Operations.WORD_LEFT:
                         opHandlr.wordLeft();
-                        _savedColumn = _gb.currentCol;
                         break;
                     case Operations.UWORD_LEFT:
                         opHandlr.uWordLeft();
-                        _savedColumn = _gb.currentCol;
                         break;
                     case Operations.WORD_RIGHT:
-                        opHandlr.wordRight();
-                        _savedColumn = _gb.currentCol;
                         break;
                     case Operations.UWORD_RIGHT:
                         opHandlr.uWordRight();
-                        _savedColumn = _gb.currentCol;
                         break;
                     case Operations.LINE_START:
                         opHandlr.lineStart();
-                        _savedColumn = _gb.currentCol;
                         break;
                     case Operations.LINE_END:
                         opHandlr.lineEnd();
-                        _savedColumn = _gb.currentCol;
                         break;
                     case Operations.QUIT:
                         break mainLoop;
                     case Operations.JUMPTO_CHAR_RIGHT:
-                        opHandlr.jumpToCharRight(_currentLine, _savedColumn, 'e');
+                        updateCol = opHandlr.jumpToCharRight(_currentLine, _savedColumn, 'e');
+                        break;
+                    case Operations.JUMPTO_CHAR_LEFT:
+                        updateCol = opHandlr.jumpToCharLeft(_currentLine, _savedColumn, 'e');
                         break;
                     default:
                 }
+
+                if (updateCol)
+                    _savedColumn = max(1, _gb.currentCol);
 
             // Button handlers
             } catch(Button.Signal s) {

@@ -26,8 +26,8 @@ enum Operations
     UWORD_RIGHT,
     LINE_START,
     LINE_END,
-    JUMPTO_CHAR_RIGHT, // XXX implement
-    JUMPTO_CHAR_LEFT, // XXX implement
+    JUMPTO_CHAR_RIGHT,
+    JUMPTO_CHAR_LEFT,
     SEARCH_FRONT, // XXX implement
     SEARCH_BACK, // XXX implement
     JUMP_WORD_UNDERCURSOR_FRONT, // XXX implement
@@ -137,22 +137,65 @@ class OperationHandlers
         gb.cursorPos = gb.lineEndPos(gb.currentLine);
     }
 
-    void jumpToCharRight(long currentLine, const GrpmCount savedCol,
+    // Return value indicates if column must be updated
+    bool jumpToCharRight(long currentLine, const GrpmCount savedCol,
             BufferElement t)
     {
-        auto line = extractors.lines(*gb, GrpmIdx(gb.cursorPos+1),
-                Direction.Front, 1);
-        // XXX here
-        flog.info("XXX line: ", line.text);
+        if ((*gb)[gb.cursorPos] == "\n") // empty line
+            return false;
 
-        foreach(i, c; line.text) {
-            if (c == t) {
-                flog.info("XXX encontrado: ", i);
+        auto lines = extractors.lines(*gb, GrpmIdx(gb.cursorPos+1),
+                Direction.Front, 1);
+
+        if (lines.length == 0)
+            return false;
+
+        auto line = lines[0];
+        auto searchStart = savedCol.to!long - 1;
+
+        if (searchStart < 0 || searchStart >= line.text.length)
+            return false;
+
+        foreach(i, c; line.text[searchStart..$]) {
+            if (c == t && i > 0) {
+                gb.cursorPos = GrpmIdx(gb.cursorPos + i);
                 break;
             }
-            flog.info("XXX no encontrado: ", c);
         }
 
-        flog.info("XXX line: ", line.text);
+        return true;
+    }
+
+    // Return value indicates if column must be updated
+    bool jumpToCharLeft(long currentLine, const GrpmCount savedCol,
+            BufferElement t)
+    {
+        if (savedCol <= 1)
+            return false;
+
+        auto lines = extractors.lines(*gb, GrpmIdx(gb.cursorPos+1),
+                Direction.Front, 1);
+
+        if ((lines.length == 0) ||
+                // empty line
+                (lines.length == 1 && (*gb)[gb.cursorPos] == "\n")) {
+            return false;
+        }
+
+        auto line = lines[0];
+        auto searchStart = savedCol.to!long - 1;
+
+        if (searchStart < 0 || searchStart >= line.text.length)
+            return false;
+
+        foreach_reverse(i, c; line.text[0..searchStart]) {
+            auto idx = savedCol - i;
+            if (c == t && idx > 0) {
+                gb.cursorPos = GrpmIdx(gb.cursorPos - idx + 1);
+                break;
+            }
+        }
+
+        return true;
     }
 }

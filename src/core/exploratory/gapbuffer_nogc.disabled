@@ -33,6 +33,7 @@ import std.container.array: Array;
  operate by graphemes. The path is selected by the hasCombiningGraphemes member that
  is updated every time text is added to the buffer to the array is reallocated
  (currently no check is done when deleting characters for performance reasons).
+    // XXX preallocation optimization (use contentBuffer)
 */
 
 /**
@@ -180,7 +181,6 @@ struct GapBuffer
         // check all the text (for full loads and reallocations)
         checkCombinedGraphemes(content, true);
     }
-    // XXX optimization: preallocated buffer for texts (use contentBuffer)
     package @trusted pragma(inline)
     void checkCombinedGraphemes(S)(S text)
     if (isSomeString!S)
@@ -304,7 +304,6 @@ struct GapBuffer
      *
      * Returns: The content of the buffer, as BufferElement.
      */
-    // XXX optimization: keep a buffer preallocated on every
     // reallocation to store the returned content
     public @property @trusted pragma(inline)
     auto content()
@@ -719,7 +718,6 @@ struct GapBuffer
     /// OpIndex: BufferType b = gapbuffer[3];
     /// Please note that this returns a BufferType and NOT a single
     /// BufferElement because the returned character could take several code points/units.
-    // XXX preallocation optimization (use contentBuffer)
     public @trusted pragma(inline)
     BufferType opIndex(GrpmIdx pos)
     {

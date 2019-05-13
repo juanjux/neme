@@ -76,7 +76,6 @@ void indexNewLinesParallel()
             //writeln("i: ", i, " offset: ", offset, " vOffset: ", vOffset, " cp: ", cp);
 
         }
-        // XXX FIXME calculate the avgLineLen
         _averageLineLen = 90;
 
         {

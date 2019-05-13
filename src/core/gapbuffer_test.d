@@ -1037,6 +1037,7 @@ unittest
 @safe unittest
 {
     auto gb = gapbuffer("polompos");
+    assert(gb[gb.cursorPos] == "p");
     assert(gb[0] == "p");
     assert(gb[$-1] == "s");
 

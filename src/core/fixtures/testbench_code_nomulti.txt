@@ -841,7 +841,6 @@ package:
         clear(asArray(text), moveToEndEnd);
     }
 
-    // XXX add combined chars test
     /// clear without text
     @system unittest
     {
@@ -861,7 +860,6 @@ package:
         }
     }
 
-        // XXX add combined chars test
         /// clear with some text, moving to the end
         @system unittest
         {
@@ -877,7 +875,6 @@ package:
             assert(gb.gapEnd == gb.buffer.length);
         }
 
-        // XXX add combined chars test
         /// clear with some text, moving to the start
         @system unittest
         {
@@ -931,7 +928,6 @@ package:
     {
         reallocate(asArray(textToAdd));
     }
-        // XXX add combined chars test
         @system unittest
         {
             auto gb = GapBuffer("Some text");
@@ -946,7 +942,6 @@ package:
             assert(prevGapStart == gb.gapStart);
             assert(prevGapEnd == gb.gapEnd);
         }
-        // XXX add combined chars test
         @system unittest
         {
             auto gb = GapBuffer("Some text");
@@ -978,7 +973,6 @@ package:
         return idx;
     }
 
-        // XXX add combined chars test
         @system unittest
         {
             auto gapSize = 10;
@@ -1018,7 +1012,6 @@ package:
         return value;
     }
 
-        // XXX add combined chars test
         @system unittest
         {
             auto gb = GapBuffer!string("012345");
@@ -1031,13 +1024,11 @@ package:
     /**
      * index operator read: auto x = gapBuffer[0..3]
      */
-    // XXX convert
     pragma(inline)
     public const(dchar[]) opSlice(ulong start, ulong end) const
     {
         return content[start..end];
     }
-        // XXX add combined chars test
         @system unittest
         {
             auto gb = GapBuffer!string("polompos");
@@ -1079,7 +1070,6 @@ package:
         return opIndexAssign(asArray(value));
     }
 
-        // XXX add combined chars test
         @system unittest
         {
             auto gb = GapBuffer!string("polompos");
@@ -1094,7 +1084,6 @@ package:
         return !graphemesCount;
     }
 
-        // XXX add combined chars test
         @system unittest
         {
             auto gb = GapBuffer();
@@ -1117,7 +1106,6 @@ package:
      * the front is the start of the content, NOT the content
      * from the cursor position.
      */
-    // XXX convert
     @property public ref dchar front()
     {
         assert(graphemesCount > 0,
@@ -1127,7 +1115,6 @@ package:
         }
         return buffer[0];
     }
-        // XXX add combined chars test
         @system unittest
         {
             auto gb = GapBuffer!string("Polompos");
@@ -1152,7 +1139,6 @@ package:
         deleteRight(1);
     }
 
-        // XXX add combined chars test
         @system unittest
         {
             auto gb = GapBuffer!string("Pok");
@@ -1176,7 +1162,6 @@ package:
             assert(clen == 0);
         }
 
-        // XXX add combined chars test
         /// test the InputRange interface
         @system unittest
         {
@@ -1192,7 +1177,6 @@ package:
             assert(gb.content == "Some initial text");
         }
 
-        // XXX add combined chars test
         /// test the foreach interface
         @system unittest
         {
@@ -1207,14 +1191,12 @@ package:
             assert(gb.content == "Some initial text");
         }
 
-        // XXX add combined chars test
         @system unittest
         {
             import std.range.primitives: isInputRange;
             assert(isInputRange!(GapBuffer!string));
         }
 
-        // XXX add combined chars test
         /// test library functions taking an InputRange or ForwardRange
         @system unittest
         {
@@ -1248,21 +1230,18 @@ package:
 
     // Forward range interface
     // TODO: return a real copy, add specific unittest
-    // XXX return this?
     @property public GapBuffer!StringT save()
     {
         auto gb = GapBuffer!StringT(this.content.dup);
         return gb;
     }
 
-        // XXX add combined chars test
         @system unittest
         {
             import std.range.primitives: isForwardRange;
             assert(isForwardRange!(GapBuffer!string));
         }
 
-        // XXX add combined chars test
         @system unittest
         {
             import std.range;

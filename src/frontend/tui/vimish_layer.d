@@ -46,6 +46,7 @@ class VimishLayer : KeyboardLayer
 
             // XXX change wchar
             WChar('x'): Operations.JUMPTO_CHAR_RIGHT,
+            WChar('z'): Operations.JUMPTO_CHAR_LEFT,
 
             WChar('Q'): Operations.QUIT,
         ];
